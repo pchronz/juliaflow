@@ -1,5 +1,7 @@
 # XXX isn't there some kind of type I can define for this?
-# XXX this type should convert between string representation and integers by itself efficiently
+# XXX this type should convert between string representation and integers by
+# itself efficiently
+
 # OFP_TYPE
 # Immutable messages
 const OFPT_HELLO = 0x00 # Symmetric message
@@ -32,7 +34,9 @@ const OFPT_QUEUE_GET_CONFIG_REQUEST = 0x14 # Controller/switch message
 const OFPT_QUEUE_GET_CONFIG_REPLY = 0x15 # Controller/switch message
 
 # Port-related constants
-# OFP_PORT_CONFIG Flags to indicate behavior of the physical port. These flags are used in ofp_py_port to describe the current configuration. They are used in the ofp_port_mod message to configure the port's behavior.
+# OFP_PORT_CONFIG Flags to indicate behavior of the physical port. These flags
+# are used in ofp_py_port to describe the current configuration. They are used
+# in the ofp_port_mod message to configure the port's behavior.
 const OFPPC_PORT_DOWN = 1 << 0 # Port is administratively down
 const OFPPC_NO_STP = 1 << 1 # Disable 802.1D spanning tree on port.
 const OFPPC_NO_RECV = 1 << 2 # Drop all packets except 802.1D spanning tree packets.
@@ -40,9 +44,12 @@ const OFPPC_NO_RECV_STP = 1 << 3 # Drop received 802.1D STP packets.
 const OFPPC_NO_FLOOD = 1 << 4 # Do not include this port when flooding.
 const OFPPC_NO_FWD = 1 << 5 # Drop packets forwarded to port.
 const OFPPC_NO_PACKET_IN = 1 << 6 # Do not send packet-in msgs fort port.
-# OFP_PORT_STATE Current state of the physical port. These are not configurable from the controller.
+# OFP_PORT_STATE Current state of the physical port. These are not configurable
+# from the controller.
 const OFPPS_LINK_DOWN = 1 << 0 # No physical link present.
-# The OFPPS_STP_* bits have no effect on switch operation. The controller must adjust OFPPC_NO_RECV, OFPPC_NO_FWD, and OFPPC_NO_PACKET_IN appropriately to fully implement an 802.1D spanning tree.
+# The OFPPS_STP_* bits have no effect on switch operation. The controller must
+# adjust OFPPC_NO_RECV, OFPPC_NO_FWD, and OFPPC_NO_PACKET_IN appropriately to
+# fully implement an 802.1D spanning tree.
 const OFPPS_STP_LISTEN = 0 << 8 # Not learning or relaying frames.
 const OFPPS_STP_LEARN = 1 << 8 # Learning but not relaying frames.
 const OFPPS_STP_FORWARD = 2 << 8 # Learning and relaying frames.
@@ -52,10 +59,13 @@ const OFPPS_STP_MASK = 3 << 8 # Bit mask for OFPPS_STP_* values.
 # Maximum number of physical switch ports.
 const OFPP_MAX = 0xff00
 # Fake output "ports".
-const OFPP_IN_PORT = 0xfff8 # Send the packet out the input port. This virtual port must be explicitly used in order to send back out the input port.
-const OFPP_TABLE = 0xfff9 # Perform actions in flow table. NB: This can only be the destination port for packet-out messages.
+const OFPP_IN_PORT = 0xfff8 # Send the packet out the input port. This virtual
+# port must be explicitly used in order to send back out the input port.
+const OFPP_TABLE = 0xfff9 # Perform actions in flow table. NB: This can only be
+# the destination port for packet-out messages.
 const OFPP_NORMAL = 0xfffa # Process with normal L2/L3 switching.
-const OFPP_FLOOD = 0xfffb # All physical ports except input port and those disabled by STP.
+const OFPP_FLOOD = 0xfffb # All physical ports except input port and those
+# disabled by STP.
 const OFPP_ALL = 0xfffc # All physical ports except input port.
 const OFPP_CONTROLLER = 0xfffd # Send to controller.
 const OFPP_LOCAL = 0xfffe # Local openflow "port".
@@ -171,7 +181,9 @@ immutable OfpHeader <: OfpStruct
     msglen::Uint16
     msgidx::Uint32
 end
-OfpHeader(protoversion::Integer, msgtype::Integer, msglen::Integer, msgidx::Integer) = OfpHeader(convert(Uint8, protoversion), convert(Uint8, msgtype), convert(Uint16, msglen), convert(Uint32, msgidx))
+OfpHeader(protoversion::Integer, msgtype::Integer, msglen::Integer,
+            msgidx::Integer) = OfpHeader(convert(Uint8, protoversion), convert(Uint8,
+            msgtype), convert(Uint16, msglen), convert(Uint32, msgidx))
 # XXX implement proper conversion functions
 function tostring(header::OfpHeader)
     "<Version: $(header.protoversion), type: $(header.msgtype), length: $(header.msglen), idx: $(header.msgidx)>"
@@ -202,10 +214,12 @@ abstract OfpMessage <: OfpStruct
 immutable OfpPhyPort <: OfpStruct
     port_no::Uint16
     hw_addr::Array{Uint8,1} # TODO length of array: OFP_MAX_ETH_ALEN
-    name::Array{Uint8,1} # Null-terminated. TODO Length: OFP_MAX_PORT_NAME_LEN. XXX what size does the OFP spec assume for chars?
+    name::Array{Uint8,1} # Null-terminated. TODO Length: OFP_MAX_PORT_NAME_LEN.
+                            # XXX what size does the OFP spec assume for chars?
     config::Uint32 # Bitmap of OFPC_* flags.
     state::Uint32 # Bitmap of OFPS_* flas.
-    # Bitmaps of OFPPF_* that describe features. All bits zeroed if unsupported or unavailable.
+    # Bitmaps of OFPPF_* that describe features. All bits zeroed if unsupported
+    # or unavailable.
     curr::Uint32 # Current features.
     advertised::Uint32 # Features being advertised by the port.
     supported::Uint32 # Features supported by the port.
@@ -216,24 +230,34 @@ OfpPhyPort(bytes::Array{Uint8,1}) = begin
     port_no = btouint16(bytes[1:2])
     hw_addr = bytes[3:3+OFP_MAX_ETH_ALEN-1]
     name = bytes[3+OFP_MAX_ETH_ALEN:3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN-1]
-    config = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN:3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 4 - 1])
-    state = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 4:3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 8 - 1])
-    curr = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 8:3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 12 - 1])
-    advertised = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 12:3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 16 - 1])
-    supported = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 16:3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 20 - 1])
-    peer = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 20:3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 24 - 1])
-    OfpPhyPort(port_no, hw_addr, name, config, state, curr, advertised, supported, peer)
+    config = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN:
+                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 4 - 1])
+    state = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 4:
+                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 8 - 1])
+    curr = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 8:
+                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 12 - 1])
+    advertised = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 12:
+                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 16 - 1])
+    supported = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 16:
+                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 20 - 1])
+    peer = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 20:
+                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 24 - 1])
+    OfpPhyPort(port_no, hw_addr, name, config, state, curr, advertised,
+                supported, peer)
 end
 # Switch features
 immutable OfpFeatures <: OfpMessage
     header::OfpHeader
-    datapath_id::Uint64 # Datapath unique ID. The lower 48-bits are for a MAC address, while the upper 16 bits are implementer-defined
+    datapath_id::Uint64 # Datapath unique ID. The lower 48-bits are for a MAC
+                        # address, while the upper 16 bits are implementer-defined
     n_buffers::Uint32 # Max packets buffered at once
     n_tables::Uint8 # Number of tables supported by datapath
-    # pad::Array{Uint8,1} # Align to 64 bits; length 3; Nothing to do here, since we are doing the rendering manually
+    # pad::Array{Uint8,1} # Align to 64 bits; length 3; Nothing to do here,
+    # since we are doing the rendering manually
     capabilities::Uint32 # Bitmap of supported "ofp_capabilities"
     actions::Uint32 # Bitmap of supported "ofp_action_types"
-    ports::Vector{OfpPhyPort} # Port definitions. The number of ports is inferred from the length field in the header.
+    ports::Vector{OfpPhyPort} # Port definitions. The number of ports is
+                            # inferred from the length field in the header.
 end
 OfpFeatures(header::OfpHeader, body::Array{Uint8,1}) = begin
     # XXX write the array of ports should be created by its own function that
@@ -244,7 +268,8 @@ OfpFeatures(header::OfpHeader, body::Array{Uint8,1}) = begin
     for p = 1:numports
         ports[p] = OfpPhyPort(body[25 + (p - 1)*48:25 + p*48 - 1])
     end
-    OfpFeatures(header, btouint64(body[1:8]), btouint32(body[9:12]), body[13], btouint32(body[17:20]), btouint32(body[21:24]), ports)
+    OfpFeatures(header, btouint64(body[1:8]), btouint32(body[9:12]), body[13],
+                btouint32(body[17:20]), btouint32(body[21:24]), ports)
 end
 tostring(msg::OfpFeatures) = begin
     str = "<header: $(tostring(msg.header)), datapath_id: $(msg.datapath_id), n_buffers: $(msg.n_buffers), n_tables: $(msg.n_tables), capabilities: $(msg.capabilities), actions: $(msg.actions), ports: $(msg.ports)>"
@@ -253,9 +278,11 @@ end
 immutable OfpSwitchConfig <: OfpMessage
     header::OfpHeader
     flags::Uint16 # OFPC_* flags.
-    miss_send_len::Uint16 # Max bytes of new flow that datapath should send to the controller
+    miss_send_len::Uint16 # Max bytes of new flow that datapath should send to
+                            # the controller
 end
-OfpSwitchConfig(header::OfpHeader, body::Array{Uint8,1}) = OfpSwitchConfig(header, btouint16(body[1:2]), btouint16(body[3:4]))
+OfpSwitchConfig(header::OfpHeader, body::Array{Uint8,1}) =
+                OfpSwitchConfig(header, btouint16(body[1:2]), btouint16(body[3:4]))
 # XXX why does lead to an error that seems completely unrelated to the following line?
 #convert(::Type{ASCIIString}, msg::OfpSwitchConfig) = println("Someone just invoked the conversion")
 tostring(msg::OfpSwitchConfig) = begin
@@ -356,9 +383,12 @@ immutable OfpFlowMod <: OfpMessage
     hard_timeout::Uint16 # Max time before discarding (seconds).
     priority::Uint16 # Priority level of flow entry.
     buffer_id::Uint32 # Buffered packet to apply to (or -1). Not meaningful for OFPFC_DELETE*.
-    out_port::Uint16 # For OFPFC_DELETE* commands, require matching entries to include this as an output port. A value of OFPP_NONE indicates no restriction.
+    out_port::Uint16 # For OFPFC_DELETE* commands, require matching entries to
+                        # include this as an output port. A value of OFPP_NONE indicates no
+                        # restriction.
     flags::Uint16 # One of OFPFF_*.
-    actions::Array{OfpActionHeader,1} # The action length is inferred from the length field in the header.
+    actions::Array{OfpActionHeader,1} # The action length is inferred from the
+                                        # length field in the header.
 end
 OfpFlowMod(header::OfpHeader, body::Array{Uint8,1}) = begin
     OfpFlowMod(header, # header

@@ -174,6 +174,9 @@ const OFPFF_EMERG = 1 << 2 # Remark this is for emergency.
 const OFP_MAX_ETH_ALEN = 6
 const OFP_MAX_PORT_NAME_LEN = 16
 
+# We will be using a lot of byte/octect arrays here
+typealias Bytes Vector{Uint8}
+
 abstract OfpStruct
 immutable OfpHeader <: OfpStruct
     protoversion::Uint8
@@ -181,16 +184,15 @@ immutable OfpHeader <: OfpStruct
     msglen::Uint16
     msgidx::Uint32
 end
-OfpHeader(protoversion::Integer, msgtype::Integer, msglen::Integer,
-            msgidx::Integer) = OfpHeader(convert(Uint8, protoversion), convert(Uint8,
-            msgtype), convert(Uint16, msglen), convert(Uint32, msgidx))
+OfpHeader(msgtype::Uint8, msglen::Uint16, msgidx::Uint32=0x00000000) = OfpHeader(0x01,
+    msgtype, msglen, msgidx)
 # XXX implement proper conversion functions
 function tostring(header::OfpHeader)
     "<Version: $(header.protoversion), type: $(header.msgtype), length: $(header.msglen), idx: $(header.msgidx)>"
 end
 # XXX implement proper conversion functions
-function headertobytes(header::OfpHeader)
-    msg = Array(Uint8, header.msglen)
+function bytes(header::OfpHeader)
+    msg = zeros(Uint8, 8)
     msg[1] = header.protoversion
     msg[2] = header.msgtype
     msg[3] = uint8(header.msglen>>8)
@@ -208,13 +210,29 @@ function readofpheader(socket)
     msgidx = ntoh(read(socket, Uint32, 1)[1])
     OfpHeader(protoversion, msgtype, msglen, msgidx)
 end
+# XXX replace all the give_length methods by including padding in the message
+# definitions and using sizeof.
+give_length(header::Type{OfpHeader}) = 8
 
 abstract OfpMessage <: OfpStruct
+immutable OfpError <: OfpMessage
+    header::OfpHeader
+    etype::Uint16 # Should be "type", which however is a keyword in Julia.
+    code::Uint16
+    data::Bytes # TODO Implement the interpretation of the error message.
+end
+function OfpError(header::OfpHeader, body::Bytes)
+    OfpError(header, # header.
+        btoui(body[1:2]), # (e)type.
+        btoui(body[3:4]), # code.
+        body[5:end] # data.
+    )
+end
 # Description of physical port
 immutable OfpPhyPort <: OfpStruct
     port_no::Uint16
-    hw_addr::Array{Uint8,1} # TODO length of array: OFP_MAX_ETH_ALEN
-    name::Array{Uint8,1} # Null-terminated. TODO Length: OFP_MAX_PORT_NAME_LEN.
+    hw_addr::Bytes # TODO length of array: OFP_MAX_ETH_ALEN
+    name::Bytes # Null-terminated. TODO Length: OFP_MAX_PORT_NAME_LEN.
                             # XXX what size does the OFP spec assume for chars?
     config::Uint32 # Bitmap of OFPC_* flags.
     state::Uint32 # Bitmap of OFPS_* flas.
@@ -225,26 +243,27 @@ immutable OfpPhyPort <: OfpStruct
     supported::Uint32 # Features supported by the port.
     peer::Uint32 # Features advertised by peer.
 end
-OfpPhyPort(bytes::Array{Uint8,1}) = begin
+OfpPhyPort(bytes::Bytes) = begin
     # XXX make this more legible somehow?
-    port_no = btouint16(bytes[1:2])
+    port_no = btoui(bytes[1:2])
     hw_addr = bytes[3:3+OFP_MAX_ETH_ALEN-1]
     name = bytes[3+OFP_MAX_ETH_ALEN:3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN-1]
-    config = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN:
+    config = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN:
                             3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 4 - 1])
-    state = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 4:
+    state = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 4:
                             3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 8 - 1])
-    curr = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 8:
+    curr = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 8:
                             3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 12 - 1])
-    advertised = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 12:
+    advertised = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 12:
                             3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 16 - 1])
-    supported = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 16:
+    supported = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 16:
                             3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 20 - 1])
-    peer = btouint32(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 20:
+    peer = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 20:
                             3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 24 - 1])
     OfpPhyPort(port_no, hw_addr, name, config, state, curr, advertised,
                 supported, peer)
 end
+give_length(port::Type{OfpPhyPort}) = 26 + OFP_MAX_ETH_ALEN + OFP_MAX_PORT_NAME_LEN
 # Switch features
 immutable OfpFeatures <: OfpMessage
     header::OfpHeader
@@ -252,14 +271,14 @@ immutable OfpFeatures <: OfpMessage
                         # address, while the upper 16 bits are implementer-defined
     n_buffers::Uint32 # Max packets buffered at once
     n_tables::Uint8 # Number of tables supported by datapath
-    # pad::Array{Uint8,1} # Align to 64 bits; length 3; Nothing to do here,
+    # pad::Bytes # Align to 64 bits; length 3; Nothing to do here,
     # since we are doing the rendering manually
     capabilities::Uint32 # Bitmap of supported "ofp_capabilities"
     actions::Uint32 # Bitmap of supported "ofp_action_types"
     ports::Vector{OfpPhyPort} # Port definitions. The number of ports is
                             # inferred from the length field in the header.
 end
-OfpFeatures(header::OfpHeader, body::Array{Uint8,1}) = begin
+OfpFeatures(header::OfpHeader, body::Bytes) = begin
     # XXX write the array of ports should be created by its own function that
     # takes the corresponding octects
     # compute the number of ports
@@ -268,8 +287,15 @@ OfpFeatures(header::OfpHeader, body::Array{Uint8,1}) = begin
     for p = 1:numports
         ports[p] = OfpPhyPort(body[25 + (p - 1)*48:25 + p*48 - 1])
     end
-    OfpFeatures(header, btouint64(body[1:8]), btouint32(body[9:12]), body[13],
-                btouint32(body[17:20]), btouint32(body[21:24]), ports)
+    OfpFeatures(header, btoui(body[1:8]), btoui(body[9:12]), body[13],
+                btoui(body[17:20]), btoui(body[21:24]), ports)
+end
+give_length(features::OfpFeatures) = begin
+    len = give_length(OfpHeader) + 16 
+    for port in features.ports
+        len += give_length(OfpPhyPort)
+    end
+    len
 end
 tostring(msg::OfpFeatures) = begin
     str = "<header: $(tostring(msg.header)), datapath_id: $(msg.datapath_id), n_buffers: $(msg.n_buffers), n_tables: $(msg.n_tables), capabilities: $(msg.capabilities), actions: $(msg.actions), ports: $(msg.ports)>"
@@ -281,66 +307,109 @@ immutable OfpSwitchConfig <: OfpMessage
     miss_send_len::Uint16 # Max bytes of new flow that datapath should send to
                             # the controller
 end
-OfpSwitchConfig(header::OfpHeader, body::Array{Uint8,1}) =
-                OfpSwitchConfig(header, btouint16(body[1:2]), btouint16(body[3:4]))
+OfpSwitchConfig(header::OfpHeader, body::Bytes) =
+                OfpSwitchConfig(header, btoui(body[1:2]), btoui(body[3:4]))
 # XXX why does lead to an error that seems completely unrelated to the following line?
 #convert(::Type{ASCIIString}, msg::OfpSwitchConfig) = println("Someone just invoked the conversion")
 tostring(msg::OfpSwitchConfig) = begin
     str = "<flags: $(msg.flags), miss_send_len: $(msg.miss_send_len)>"
 end
+give_length(switchconig::Type{OfpSwitchConfig}) = give_length(OfpHeader) + 4
 # Flow match structures
 immutable OfpMatch <: OfpStruct
     wildcards::Uint32 # Wildcards fields
     in_port::Uint16 # Input switch port.
-    dl_src::Array{Uint8,1} # Length: OFP_ETH_ALEN; Ethernet source address.
-    dl_dst::Array{Uint8,1} # Length: OFP_ETH_ALEN; Ehternet destination address.
+    dl_src::Bytes # Length: OFP_MAX_ETH_ALEN; Ethernet source address.
+    dl_dst::Bytes # Length: OFP_MAX_ETH_ALEN; Ehternet destination address.
     dl_vlan::Uint16 # Input VLAN id.
     dl_vlan_pcp::Uint8 # Input VLAN priority.
     # pad1::Uint8 # Align to 64 bits.
     dl_type::Uint16 # Ethernet frame type.
     nw_tos::Uint8 # IP ToS (actually DSCP field, 6 bits).
     nw_proto::Uint8 # IP protocol or lower 8 bits of ARP opcode.
-    # pad2::Array{Uint8,1} # Length: 2; Algin to 64 bits.
+    # pad2::Bytes # Length: 2; Algin to 64 bits.
     nw_src::Uint32 # IP source address.
-    nd_dst::Uint32 # IP destination address.
+    nw_dst::Uint32 # IP destination address.
     tp_src::Uint16 # TCP/UDP source port.
     tp_dst::Uint16 # TCP/UDP destination port.
 end
-OfpMatch(body::Array{Uint8,1}) = OfpMatch(
-    btouint32(body[1:4]), # wildcards
-    btouint16(body[5:6]), # in_port
-    # XXX the spec (1.0.0) say it should be OFP_ETH_MAX_ALEN, but never defines
-    # it. The text actually refers to OFP_ETH_MAX_ALEN, so I am replacing the
+OfpMatch(body::Bytes) = OfpMatch(
+    btoui(body[1:4]), # wildcards
+    btoui(body[5:6]), # in_port
+    # XXX the spec (1.0.0) says it should be OFP_MAX_ETH_ALEN, but never defines
+    # it. The text actually refers to OFP_MAX_ETH_ALEN, so I am replacing the
     # constant in the followin accordingly.
-    body[7:7 + OFP_ETH_MAX_ALEN - 1], # dl_src
-    body[7 + OFP_ETH_MAX_ALEN : 7 + 2*OFP_ETH_MAX_ALEN - 1], # dl_dst
-    btouint16(body[7 + 2*OFP_ETH_MAX_ALEN:7 + 2*OFP_ETH_MAX_ALEN + 1]), # dl_vlan
-    body[7 + 2*OFP_ETH_MAX_ALEN + 2], # dl_vlan_pcp
-    btouint16(body[7 + 2*OFP_ETH_MAX_ALEN + 3:7 + 2*OFP_ETH_MAX_ALEN + 4]), # dl_type
-    body[7 + 2*OFP_ETH_MAX_ALEN + 5], # nw_tos
-    body[7 + 2*OFP_ETH_MAX_ALEN + 6], # nw_proto
-    btouint32(body[7 + 2*OFP_ETH_MAX_ALEN + 7:7 + 2*OFP_ETH_MAX_ALEN + 10]), # nw_src
-    btouint32(body[7 + 2*OFP_ETH_MAX_ALEN + 11:7 + 2*OFP_ETH_MAX_ALEN + 14]), # nw_dst
-    btouint16(body[7 + 2*OFP_ETH_MAX_ALEN + 15:7 + 2*OFP_ETH_MAX_ALEN + 16]), # tp_src
-    btouint16(body[7 + 2*OFP_ETH_MAX_ALEN + 17:7 + 2*OFP_ETH_MAX_ALEN + 18]), # tp_dst
+    body[7:7 + OFP_MAX_ETH_ALEN - 1], # dl_src
+    body[7 + OFP_MAX_ETH_ALEN : 7 + 2OFP_MAX_ETH_ALEN - 1], # dl_dst
+    btoui(body[7 + 2OFP_MAX_ETH_ALEN:7 + 2OFP_MAX_ETH_ALEN + 1]), # dl_vlan
+    body[7 + 2OFP_MAX_ETH_ALEN + 2], # dl_vlan_pcp
+    btoui(body[7 + 2OFP_MAX_ETH_ALEN + 4:7 + 2OFP_MAX_ETH_ALEN + 5]), # dl_type
+    body[7 + 2OFP_MAX_ETH_ALEN + 6], # nw_tos
+    body[7 + 2OFP_MAX_ETH_ALEN + 7], # nw_proto
+    btoui(body[7 + 2OFP_MAX_ETH_ALEN + 10:7 + 2OFP_MAX_ETH_ALEN + 13]), # nw_src
+    btoui(body[7 + 2OFP_MAX_ETH_ALEN + 14:7 + 2OFP_MAX_ETH_ALEN + 17]), # nw_dst
+    btoui(body[7 + 2OFP_MAX_ETH_ALEN + 18:7 + 2OFP_MAX_ETH_ALEN + 19]), # tp_src
+    btoui(body[7 + 2OFP_MAX_ETH_ALEN + 20:7 + 2OFP_MAX_ETH_ALEN + 21]) # tp_dst
 )
+give_length(match::Type{OfpMatch}) = 2OFP_MAX_ETH_ALEN + 28
+function bytes(match::OfpMatch)
+    byts::Bytes = zeros(Uint8, give_length(OfpMatch))
+    byts[1:4] = bytes(match.wildcards)
+    byts[5:6] = bytes(match.in_port)
+    byts[7:7 + OFP_MAX_ETH_ALEN - 1] = match.dl_src
+    byts[7 + OFP_MAX_ETH_ALEN : 7 + 2OFP_MAX_ETH_ALEN - 1] = match.dl_dst
+    byts[7 + 2OFP_MAX_ETH_ALEN:7 + 2OFP_MAX_ETH_ALEN + 1] = bytes(match.dl_vlan)
+    byts[7 + 2OFP_MAX_ETH_ALEN + 2] = bytes(match.dl_vlan_pcp)
+    byts[7 + 2OFP_MAX_ETH_ALEN + 3:7 + 2OFP_MAX_ETH_ALEN + 4] =
+        bytes(match.dl_type)
+    byts[7 + 2OFP_MAX_ETH_ALEN + 5] = match.nw_tos
+    byts[7 + 2OFP_MAX_ETH_ALEN + 6] = match.nw_proto
+    byts[7 + 2OFP_MAX_ETH_ALEN + 7:7 + 2OFP_MAX_ETH_ALEN + 10] =
+        bytes(match.nw_src)
+    byts[7 + 2OFP_MAX_ETH_ALEN + 11:7 + 2OFP_MAX_ETH_ALEN + 14] =
+        bytes(match.nw_dst)
+    byts[7 + 2OFP_MAX_ETH_ALEN + 15:7 + 2OFP_MAX_ETH_ALEN + 16] =
+        bytes(match.tp_src)
+    byts[7 + 2OFP_MAX_ETH_ALEN + 17:7 + 2OFP_MAX_ETH_ALEN + 18] =
+        bytes(match.tp_dst)
+    byts
+end
 immutable OfpActionHeader <: OfpStruct
     htype::Uint16 # One of OFPAT_*. XXX Accroding to spec it should be "type",
                     # which in Julia is a keyword however.
     len::Uint16 # Length of action, including this header. This is the length of
                 # action, including any padding to make it 64-bit algined.
-    # pad::Array{Uint8,1} Length: 4
+    # pad::Bytes Length: 4
 end
-OfpActionHeader(body::Array{Uint8,1}) = OfpActionHeader(btouint16(body[1:2]),
-btouint16(body[3:4]))
-OfpActionHeaders(body::Array{Uint8,1}) = begin
+give_length(actionheader::Type{OfpActionHeader}) = 8
+function bytes(actionheader::OfpActionHeader)
+    byts::Bytes = zeros(Uint8, 8)
+    byts[1:2] = bytes(actionheader.htype)
+    byts[3:4] = bytes(actionheader.len)
+    byts
+end
+function bytes(headers::Vector{OfpActionHeader})
+    numh = length(headers)
+    hlen = give_length(OfpActionHeader)
+    byts::Bytes = zeros(Uint8, numh*hlen)
+    for i = 1:numh
+        byts[hlen*(i-1)+1:hlen*i] = bytes(headers[i])
+    end
+    byts
+end
+OfpActionHeader(body::Bytes) = OfpActionHeader(btoui(body[1:2]),
+    btoui(body[3:4]))
+OfpActionHeader(htype::Unsigned, len::Unsigned) = OfpActionHeader(convert(Uint16, htype),
+    convert(Uint16, len))
+OfpActionHeaders(body::Bytes) = begin
     numheaders = length(body)/8
-    headers::Array{OfpHeader,1} = Array(Ofpheader, numheaders)
+    headers::Vector{OfpActionHeader} = Array(OfpActionHeader, numheaders)
     for i = 1:numheaders
-        headers[i] = OfpHeader(body[(i - 1)*8+1:i*8])
+        headers[i] = OfpActionHeader(body[(i - 1)*8+1:i*8])
     end
     headers
 end
+give_length(actionheaders::Vector{OfpActionHeader}) = length(actionheaders)*give_length(OfpActionHeader)
 # Packet in messages
 immutable OfpPacketIn <: OfpMessage
     header::OfpHeader 
@@ -349,32 +418,37 @@ immutable OfpPacketIn <: OfpMessage
     in_port::Uint16 # Port on which frame was received.
     reason::Uint8 # Reason packet is being sent (one of OFPR_*).
     # pad::Uint8
-    data::Array{Uint8,1}  # Ethernet frame, halfway through 32-bit word, so the
+    data::Bytes  # Ethernet frame, halfway through 32-bit word, so the
                            # IP header is 32-bit aligned. The amount of data is inferred from the length
                            # field in the header. Because of padding, offsetof(struct ofp_packet_in,
                            # data) == sizeof(struct ofp_packet_in) - 2.
 end
 tostring(msg::OfpPacketIn) = "<header: $(tostring(msg.header)), buffer_id: $(msg.buffer_id), total_len: $(msg.total_len), in_port: $(msg.in_port), reason: $(msg.reason), data: $(msg.data)>"
-OfpPacketIn(header::OfpHeader, body::Array{Uint8,1}) = begin
+OfpPacketIn(header::OfpHeader, body::Bytes) = begin
     datalen = length(body) - 10
-    data = Array(Uint8, datalen)
+    data = zeros(Uint8, datalen)
     for i = 1:datalen
         data[i] = body[11 + i - 1]
     end
-    OfpPacketIn(header, btouint32(body[1:4]), btouint16(body[5:6]), btouint16(body[7:8]), body[9], data)
+    OfpPacketIn(header, btoui(body[1:4]), btoui(body[5:6]), btoui(body[7:8]), body[9], data)
 end
 # Port status messages
 immutable OfpPortStatus <: OfpMessage
     header::OfpHeader
     reason::Uint8 # One of OFPPR_*
-    # pad::Array{Uint8,1} # length: 7; Align to 64 bits
+    # pad::Bytes # length: 7; Align to 64 bits
     desc::OfpPhyPort
 end
-OfpPortStatus(header::OfpHeader, body::Array{Uint8,1}) = OfpPortStatus(header, body[1], OfpPhyPort(body[17:64]))
+OfpPortStatus(header::OfpHeader, body::Bytes) = OfpPortStatus(header, body[1], OfpPhyPort(body[17:64]))
+give_length(portstatus::Type{OfpPortStatus}) = give_length(OfpHeader) + 8 +
+    give_length(OfpPhyPort)
 # Modify StateMessages
 # Flow setup and teardown (controller -> datapath)
-immutable OfpFlowMod <: OfpMessage
-    header::OfpHeader
+# XXX try to make the type immutable again --> resolve incomplete initialization
+# for immutable type.
+type OfpFlowMod <: OfpMessage
+    # NB: the header is first in the message. We just moved it to the end to
+    # allow for incomplete initialization!
     match::OfpMatch # Fields to match
     cookie::Uint64 # Opaque controller-issued identifier.
     # Flow actions.
@@ -387,26 +461,67 @@ immutable OfpFlowMod <: OfpMessage
                         # include this as an output port. A value of OFPP_NONE indicates no
                         # restriction.
     flags::Uint16 # One of OFPFF_*.
-    actions::Array{OfpActionHeader,1} # The action length is inferred from the
+    actions::Vector{OfpActionHeader} # The action length is inferred from the
                                         # length field in the header.
+    header::OfpHeader
+    OfpFlowMod(header::OfpHeader, body::Bytes) = begin
+        OfpFlowMod(OfpMatch(body[1:40]), # match
+        btoui(body[41:48]), # cookie
+        btoui(body[49:50]), # command
+        btoui(body[51:52]), # idle_timeout
+        btoui(body[53:54]), # hard_timeout
+        btoui(body[55:56]), # priority
+        btoui(body[57:60]), # buffer_id
+        btoui(body[61:62]), # out_port
+        btoui(body[63:64]), # flags
+        OfpActionHeaders(body[65:end]), # actions
+        header) # header 
+    end
+    # Since the header needs to contain the length of the whole message, the
+    # messages are kind of self-referential. Thus we first create an unfinished
+    # object that is missing the header, then we obtain its length, which is
+    # independent of the header's actual instance, then we instantiate the
+    # header with the correct result. I love coding.
+    # XXX Apparently this does not work with an immutable type, even in the
+    # constructor. Now I need to make the type mutable. I hate coding.
+    OfpFlowMod(match::OfpMatch, cookie::Uint64, command::Uint16,
+        idle_timeout::Uint16, hard_timeout::Uint16, priority::Uint16,
+        buffer_id::Uint32, out_port::Uint16, flags::Uint16,
+        actions::Vector{OfpActionHeader}) = begin
+        # Create the partially initialized object.
+        flowmod = new(match, cookie, command, idle_timeout, hard_timeout,
+            priority, buffer_id, out_port, flags, actions) 
+        # Get its length and create the corresponding header.
+        header::OfpHeader = OfpHeader(OFPT_FLOW_MOD,
+            uint16(give_length(flowmod)))
+        flowmod.header = header
+        flowmod
+    end
 end
-OfpFlowMod(header::OfpHeader, body::Array{Uint8,1}) = begin
-    OfpFlowMod(header, # header
-    OfpMatch(body[1:40]), # match
-    btouint64(body[41:48]), # cookie
-    btouint16(body[49:50]), # command
-    btouint16(body[51:52]), # idle_timeout
-    btouint16(body[53:54]), # hard_timeout
-    btouint16(body[55:56]), # priority
-    btouint32(body[57:60]), # buffer_id
-    btouint16(body[61:62]), # out_port
-    btouint16(body[63:64]), # flags
-    OfpActionHeaders(body[65:end])) # actions
+give_length(flowmod::OfpFlowMod) = give_length(OfpHeader) + give_length(OfpMatch) + 24 + give_length(flowmod.actions)
+# XXX Just as reading the length it should be possible to serialize messages
+# seamlessly and automaically using the fields. Some metaprogramming maybe?
+bytes(flowmod::OfpFlowMod) = begin
+    matchlen = give_length(OfpMatch)
+    byts::Bytes = zeros(Uint8, flowmod.header.msglen)
+    byts[1:8] = bytes(flowmod.header)
+    byts[9:9+matchlen-1] = bytes(flowmod.match)
+    byts[9+matchlen:9+matchlen+8-1] = bytes(flowmod.cookie)
+    byts[9+matchlen+8:9+matchlen+10-1] = bytes(flowmod.command)
+    byts[9+matchlen+10:9+matchlen+12-1] = bytes(flowmod.idle_timeout)
+    byts[9+matchlen+12:9+matchlen+14-1] = bytes(flowmod.hard_timeout)
+    byts[9+matchlen+14:9+matchlen+16-1] = bytes(flowmod.priority)
+    byts[9+matchlen+16:9+matchlen+20-1] = bytes(flowmod.buffer_id)
+    byts[9+matchlen+20:9+matchlen+22-1] = bytes(flowmod.out_port)
+    byts[9+matchlen+22:9+matchlen+24-1] = bytes(flowmod.flags)
+    actionbytes = bytes(flowmod.actions)
+    byts[9+matchlen+24:end] = actionbytes
+    byts
 end
-# Empty messages, no body, but a header (HELLO, ECHO, ...)
 immutable OfpEmptyMessage <: OfpMessage
     header::OfpHeader
 end
+give_length(empty::Type{OfpEmptyMessage}) = give_length(OfpHeader)
 
 type UnrecognizedMessageError <: Exception
 end
@@ -416,29 +531,34 @@ function processrequest(message::OfpMessage, socket::TcpSocket)
         if message.header.msgtype == OFPT_HELLO
             info("Got HELLO, replying HELLO")
             # XXX how does the msgidx work?
-            write(socket, headertobytes(OfpHeader(1, OFPT_HELLO, 8, 0xff)))
+            write(socket, bytes(OfpHeader(OFPT_HELLO, 0x0008)))
             info("Sending FEATURES_REQUEST")
-            write(socket, headertobytes(OfpHeader(1, OFPT_FEATURES_REQUEST, 8, 0xfe)))
+            write(socket, bytes(OfpHeader(OFPT_FEATURES_REQUEST, 0x0008)))
             info("Sending GET_CONFIG_REQUEST")
-            write(socket, headertobytes(OfpHeader(1, OFPT_GET_CONFIG_REQUEST, 8, 0xfd)))
+            write(socket, bytes(OfpHeader(OFPT_GET_CONFIG_REQUEST, 0x0008)))
         elseif message.header.msgtype == OFPT_FEATURES_REPLY
             # TODO convert the body to a proper body type and output the contents
             info("Got FEATURES_REPLY: $(tostring(message))")
         elseif message.header.msgtype == OFPT_ECHO_REQUEST
             info("Got ECHO_REQUEST, replying ECHO_REPLY")
-            write(socket, headertobytes(OfpHeader(1, OFPT_ECHO_REPLY, 8, 0xfa)))
+            write(socket, bytes(OfpHeader(OFPT_ECHO_REPLY, 0x0008)))
         elseif message.header.msgtype == OFPT_GET_CONFIG_REPLY
             info("Got GET_CONFIG_REPLY: $(tostring(message))")
         elseif message.header.msgtype == OFPT_PACKET_IN
             info("Got PACKET_IN: $(tostring(message))")
+            # Assuming we just got the ARP request from host 1
+            # TODO send a message to forward broadcasts
+            write(socket, bytes(create_arp_request_flowmod()))
+        elseif message.header.msgtype == OFPT_ERROR
+            warn("Got ERROR")
         end
     catch e
-        error("Processing message of type <$(message.header.msgtype)> failed: $e")
         Base.error_show(STDERR, e, catch_backtrace())
+        error("Processing message of type <$(message.header.msgtype)> failed: $e")
     end
 end
 
-function assemblemessage(header::OfpHeader, body::Array{Uint8,1})
+function assemblemessage(header::OfpHeader, body::Bytes)
     # determine the message type first
     if header.msgtype == OFPT_HELLO
         assert(length(body) == 0)
@@ -452,37 +572,89 @@ function assemblemessage(header::OfpHeader, body::Array{Uint8,1})
         return OfpSwitchConfig(header, body)
     elseif header.msgtype == OFPT_PACKET_IN
         return OfpPacketIn(header, body)
+    elseif header.msgtype == OFPT_ERROR
+        return OfpError(header, body)
     else
         warn("Got an unrecognized message of type $(header.msgtype), which I am ignoring")
         #throw(UnrecognizedMessageError())
     end
 end
 
+function create_arp_request_flowmod()
+    OfpFlowMod(
+        OfpMatch(
+            uint32(0), # Wildcards fields
+            0x0000, # Input switch port.
+            zeros(Uint8, OFP_MAX_ETH_ALEN), # Length: OFP_MAX_ETH_ALEN; Ethernet source address.
+            zeros(Uint8, OFP_MAX_ETH_ALEN), # Length: OFP_MAX_ETH_ALEN; Ehternet destination address.
+            uint16(0), # Input VLAN id.
+            uint8(0), # Input VLAN priority.
+            0x0806, # Ethernet frame type.
+            0x08, # IP ToS (actually DSCP field, 6 bits).
+            0x01, # IP protocol or lower 8 bits of ARP opcode.
+            0x00000000, # IP source address.
+            0x00000000, # IP destination address.
+            0x0000, # TCP/UDP source port.
+            0x0000 # TCP/UDP destination port.
+        ), # OfpMatch
+        uint64(0), # cookie
+        uint16(OFPFC_ADD), # command
+        uint16(60), # idle_timeout; XXX What is a good/default value here?
+        uint16(60), # hard_timeout; XXX What is a good/default value here?
+        uint16(0), # priority
+        uint32(0), # buffer_id; XXX set the buffer id based on the PACKET_IN
+        uint16(OFPP_NONE), # out_port.
+        uint16(OFPFF_SEND_FLOW_REM), # flags.
+        [OfpActionHeader(
+            OFPAT_OUTPUT, # header type.
+            0x0008 # Action length.
+        )] # actions
+    )
+end
+
+type UnexpectedIntLength <: Exception
+end
 # XXX there must be something like this somewhere in Julia's API
 # utility functions for assembling bytes to Uints
 # TODO how about writing "convert" methods for this?
-function btouint16(bytes)
-    ui = uint16(bytes[2]) << 8
-    ui |= uint16(bytes[1])
+function btoui(bytes::Bytes)
+    blen = length(bytes)
+    # Why? Because I can. The ternary operator is right associative btw.
+    ui = blen == 1 ? bytes[1] : blen == 2 ? uint16(0) : blen == 4 ?
+        uint32(0) : blen == 8 ? uint64(0) : throw(UnexpectedIntLength())
+    for i = 1:blen
+        ui |= convert(typeof(ui), bytes[i]) << 8(i-1)
+    end
     ntoh(ui)
 end
-function btouint32(bytes)
-    ui = uint32(bytes[4]) << 24
-    ui |= uint32(bytes[3]) << 16
-    ui |= uint32(bytes[2]) << 8
-    ui |= uint32(bytes[1])
-    ntoh(ui)
+function bytes(ui::Uint8)
+    ui
 end
-function btouint64(bytes)
-    ui = uint64(bytes[8]) << 56
-    ui |= uint64(bytes[7]) << 48
-    ui |= uint64(bytes[6]) << 40
-    ui |= uint64(bytes[5]) << 32
-    ui |= uint64(bytes[4]) << 24
-    ui |= uint64(bytes[3]) << 16
-    ui |= uint64(bytes[2]) << 8
-    ui |= uint64(bytes[1])
-    ntoh(ui)
+function bytes(ui::Uint16)
+    byts = zeros(Uint8, 2)
+    byts[1] = uint8(ui >> 8)
+    byts[2] = uint8(ui)
+    byts
+end
+function bytes(ui::Uint32)
+    byts = zeros(Uint8, 4)
+    byts[1] = uint8(ui >> 24)
+    byts[2] = uint8(ui >> 16)
+    byts[3] = uint8(ui >> 8)
+    byts[4] = uint8(ui)
+    byts
+end
+function bytes(ui::Uint64)
+    byts = zeros(Uint8, 8)
+    byts[1] = uint8(ui >> 56)
+    byts[2] = uint8(ui >> 48)
+    byts[3] = uint8(ui >> 40)
+    byts[4] = uint8(ui >> 32)
+    byts[5] = uint8(ui >> 24)
+    byts[6] = uint8(ui >> 16)
+    byts[7] = uint8(ui >> 8)
+    byts[8] = uint8(ui)
+    byts
 end
 
 function start_server(port = 6633)
@@ -509,7 +681,7 @@ end
 function sendhello()
     info("Sending HELLO")
     sock = connect(6633)
-    write(sock, headertobytes(OfpHeader(1, OFPT_HELLO, 8, 255)))
+    write(sock, bytes(OfpHeader(OFPT_HELLO, 0x0008)))
 end
 
 start_server()

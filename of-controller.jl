@@ -1,3 +1,4 @@
+module OpenFlow
 # XXX isn't there some kind of type I can define for this?
 # XXX this type should convert between string representation and integers by
 # itself efficiently
@@ -35,8 +36,8 @@ const OFPT_QUEUE_GET_CONFIG_REPLY = 0x15 # Controller/switch message
 
 # Port-related constants
 # OFP_PORT_CONFIG Flags to indicate behavior of the physical port. These flags
-# are used in ofp_py_port to describe the current configuration. They are used
-# in the ofp_port_mod message to configure the port's behavior.
+    # are used in ofp_py_port to describe the current configuration. They are used
+    # in the ofp_port_mod message to configure the port's behavior.
 const OFPPC_PORT_DOWN = 1 << 0 # Port is administratively down
 const OFPPC_NO_STP = 1 << 1 # Disable 802.1D spanning tree on port.
 const OFPPC_NO_RECV = 1 << 2 # Drop all packets except 802.1D spanning tree packets.
@@ -45,11 +46,11 @@ const OFPPC_NO_FLOOD = 1 << 4 # Do not include this port when flooding.
 const OFPPC_NO_FWD = 1 << 5 # Drop packets forwarded to port.
 const OFPPC_NO_PACKET_IN = 1 << 6 # Do not send packet-in msgs fort port.
 # OFP_PORT_STATE Current state of the physical port. These are not configurable
-# from the controller.
+    # from the controller.
 const OFPPS_LINK_DOWN = 1 << 0 # No physical link present.
 # The OFPPS_STP_* bits have no effect on switch operation. The controller must
-# adjust OFPPC_NO_RECV, OFPPC_NO_FWD, and OFPPC_NO_PACKET_IN appropriately to
-# fully implement an 802.1D spanning tree.
+    # adjust OFPPC_NO_RECV, OFPPC_NO_FWD, and OFPPC_NO_PACKET_IN appropriately to
+    # fully implement an 802.1D spanning tree.
 const OFPPS_STP_LISTEN = 0 << 8 # Not learning or relaying frames.
 const OFPPS_STP_LEARN = 1 << 8 # Learning but not relaying frames.
 const OFPPS_STP_FORWARD = 2 << 8 # Learning and relaying frames.
@@ -60,9 +61,9 @@ const OFPPS_STP_MASK = 3 << 8 # Bit mask for OFPPS_STP_* values.
 const OFPP_MAX = 0xff00
 # Fake output "ports".
 const OFPP_IN_PORT = 0xfff8 # Send the packet out the input port. This virtual
-# port must be explicitly used in order to send back out the input port.
+    # port must be explicitly used in order to send back out the input port.
 const OFPP_TABLE = 0xfff9 # Perform actions in flow table. NB: This can only be
-# the destination port for packet-out messages.
+    # the destination port for packet-out messages.
 const OFPP_NORMAL = 0xfffa # Process with normal L2/L3 switching.
 const OFPP_FLOOD = 0xfffb # All physical ports except input port and those
 # disabled by STP.
@@ -116,14 +117,14 @@ const OFPPR_MODIFY = 0x02 # Some attribute of the port has changed.
 
 # Flow wildcards
 # OFP_FLOW_WILDCARDS
-const OFPFW_IN_PORT = 1 <<  # Switch input port.
-const OFPFW_DL_VLAN = 1 <<  # VLAN id.
-const OFPFW_DL_SRC = 1 <<  # Ethernet source address.
-const OFPFW_DL_DST = 1 <<  # Ethernet destination address.
-const OFPFW_DL_TYPE = 1 <<  # Ethernet frame type.
-const OFPFW_NW_PROTO = 1 <<  # IP protocol.
-const OFPFW_TP_SRC = 1 <<  # TCP/UDP source port.
-const OFPFW_TP_DST = 1 <<  # TCP/UDP destination port.
+const OFPFW_IN_PORT = 1 << 0 # Switch input port.
+const OFPFW_DL_VLAN = 1 << 1 # VLAN id.
+const OFPFW_DL_SRC = 1 << 2 # Ethernet source address.
+const OFPFW_DL_DST = 1 << 3 # Ethernet destination address.
+const OFPFW_DL_TYPE = 1 << 4 # Ethernet frame type.
+const OFPFW_NW_PROTO = 1 << 5 # IP protocol.
+const OFPFW_TP_SRC = 1 << 6 # TCP/UDP source port.
+const OFPFW_TP_DST = 1 << 7 # TCP/UDP destination port.
 # IP source address wildcard bit count. 0 is exact match, 1 ignores the LSB, 2
 # ignores the 2 least significant bits, ..., 32 and higher wildcard the entire
 # field. This is the *opposite* of the usual convention where e.g. /24 indicates
@@ -169,6 +170,61 @@ const OFPFF_SEND_FLOW_REM = 1 << 0 # Send flow removed message when flow expires
                                     # or is deleted
 const OFPFF_CHECK_OVERLAP = 1 << 1 # Check for overlapping entries first.
 const OFPFF_EMERG = 1 << 2 # Remark this is for emergency.
+
+# Error messages.
+# OFP_ERROR_TYPE
+const OFPET_HELLO_FAILED = 0x00 # Hello protocol failed.
+const OFPET_BAD_REQUEST = 0x01 # Request was not understood.
+const OFPET_BAD_ACTION = 0x02 # Error in action description.
+const OFPET_FLOW_MOD_FAILED = 0x03 # Problem modifying flow entry.
+const OFPET_PORT_MOD_FAILED = 0x04 # Port mod request failed.
+const OFPET_QUEUE_OP_FAILED = 0x05 # Queue operation failed.
+# OFP_BAD_REQUEST_CODE
+const OFPBRC_BAD_VERSION = 0x00 # ofp_header.version not supported.
+const OFPBRC_BAD_TYPE = 0x01 # ofp_header.type not supported.
+const OFPBRC_BAD_STAT = 0x02 # ofp_stats_request.type not supported.
+const OFPBRC_BAD_VENDOR = 0x03 # Vendor not supported (in ofp_vendor_header or
+    # ofp_stats_request or ofp_stats_reply).
+const OFPBRC_BAD_SUBTYPE = 0x04 # Vendor subtype not supported.
+const OFPBRC_EPERM = 0x05 # Permissions error.
+const OFPBRC_BAD_LEN = 0x06 # Wrong request length for type.
+const OFPBRC_BUFFER_EMPTY = 0x07 # Specified buffer has already been used.
+const OFPBRC_BUFFER_UNKNOWN = 0x08 # Specified buffer does not exist.
+# OFP_BAD_ACTION_CODE
+# ofp_error_msg 'code' values for OFPET_BAD_ACTION. 'data' contains at least the
+# first 64 bytes of the failed request.
+const OFPBAC_BAD_TYPE = 0x00 # Unknown action type.
+const OFPBAC_BAD_LEN = 0x01 # Length problem in actions.
+const OFPBAC_BAD_VENDOR = 0x02 # Unkown vendor id specified.
+const OFPBAC_BAD_VENDOR_TYPE = 0x03 # Unkown action type for vendor id.
+const OFPBAC_BAD_OUT_PORT = 0x04 # Problem validating output action.
+const OFPBAC_BAD_ARGUMENT = 0x05 # Bad action argument.
+const OFPBAC_EPERM = 0x06 # Permissions error.
+const OFPBAC_TOO_MANY = 0x07 # Can't handle this many actions.
+const OFPBAC_BAD_QUEUE = 0x08 # Problem validating output queue.
+# OFP_FLOW_MOD_FAILED_CODE
+# ofp_error_msg 'code' values for OFPET_FLOW_MOD_FAILED. 'data' contains at
+# least the first 64 bytes of the failed request.
+const OFPFMFC_ALL_TABLES_FULL =  # Flow not added because of full tables.
+const OFPFMFC_OVERLAP =  # Attempted to add overlapping flow with CHECK_OVERLAP
+    # flag set.
+const OFPFMFC_EPERM =  # Permissions error.
+const OFPFMFC_BAD_EMERG_TIMEOUT =  # Flow not added because of non-zero
+    # idle/hard timeout.
+const OFPFMFC_BAD_COMMAND =  # Unknown command.
+const OFPFMFC_UNSUPPORTED =  # Unsupported action list - cannot process in the
+    # order specified.
+# OFP_PORT_MOD_FAILED_CODE
+# ofp_error_msg 'code' values for OFPET_PORT_MOD_FAILED> 'data' contains at
+# least the first 64 bytes of the failed request.
+const OFPMFC_BAD_PORT = 0x00 # Specified port does not exist.
+const OFPMFC_BAD_HW_ADDR = 0x01 # Specified hardware address is wrong.
+# OFP_QUEUE_OP_FAILED_CODE
+# ofp_error msg 'code' values for OFPET_QUEUE_OP_FAILED. 'data' contains at
+# least the first 64 bytes of the failed request.
+const OFPQOFC_BAD_PORT = 0x00 # Invalid port (or port does not exist).
+const OFPQOFC_BAD_QUEUE = 0x01 # Queue does not exist.
+const OFPQOFC_EPERM = 0x02 # Permissions error.
 
 # Other used constants
 const OFP_MAX_ETH_ALEN = 6
@@ -218,8 +274,11 @@ abstract OfpMessage <: OfpStruct
 immutable OfpError <: OfpMessage
     header::OfpHeader
     etype::Uint16 # Should be "type", which however is a keyword in Julia.
-    code::Uint16
-    data::Bytes # TODO Implement the interpretation of the error message.
+    code::Uint16 
+    data::Bytes # ASCII text for OFPET_HELLO FAILED, at least 64 bytes of the
+        # failed request for OFP_BAD_REQUEST CODE, OFP_BAD_ACTION_CODE, 
+        # OFP_FLOW_MOD_FAILED_CODE, OFP_PORT_MOD_FAILED_CODE or
+        # OFPET_QUEUE_OP_FAILED.
 end
 function OfpError(header::OfpHeader, body::Bytes)
     OfpError(header, # header.
@@ -227,6 +286,56 @@ function OfpError(header::OfpHeader, body::Bytes)
         btoui(body[3:4]), # code.
         body[5:end] # data.
     )
+end
+function tostring(error::OfpError)
+    # XXX Solve this in a nicer way. Using reflection, or a dictionary or
+    # anything, but hard coding.
+    typestr = if error.etype == OFPET_HELLO_FAILED
+        "OFPET_HELLO_FAILED"
+    elseif error.etype == OFPET_BAD_REQUEST
+        "OFPET_BAD_REQUEST"
+    elseif error.etype == OFPET_BAD_ACTION
+        "OFPET_BAD_ACTION"
+    elseif error.etype == OFPET_FLOW_MOD_FAILED
+        "OFPET_FLOW_MOD_FAILED"
+    elseif error.etype == OFPET_PORT_MOD_FAILED
+        "OFPET_PORT_MOD_FAILED"
+    elseif error.etype == OFPET_QUEUE_OP_FAILED
+        "OFPET_QUEUE_OP_FAILED"
+    else
+        throw(UnrecognizedErrorType(error))
+    end
+    codestr = if error.code == OFPBRC_BAD_VERSION
+        "OFPBRC_BAD_VERSION"
+    elseif error.code == OFPBRC_BAD_TYPE
+        "OFPBRC_BAD_TYPE"
+    elseif error.code == OFPBRC_BAD_STAT
+        "OFPBRC_BAD_STAT"
+    elseif error.code == OFPBRC_BAD_VENDOR
+        "OFPBRC_BAD_VENDOR"
+    elseif error.code == OFPBRC_BAD_SUBTYPE
+        "OFPBRC_BAD_SUBTYPE"
+    elseif error.code == OFPBRC_EPERM
+        "OFPBRC_EPERM"
+    elseif error.code == OFPBRC_BAD_LEN
+        "OFPBRC_BAD_LEN"
+    elseif error.code == OFPBRC_BUFFER_EMPTY
+        "OFPBRC_BUFFER_EMPTY"
+    elseif error.code == OFPBRC_BUFFER_UNKNOWN
+        "OFPBRC_BUFFER_UNKNOWN"
+    else
+        throw(UnrecognizedErrorCode(error))
+    end
+    str::String = "<header: $(tostring(error.header)), type:
+        $(typestr)($(error.etype)), code: $(codestr)($(error.code)), data:
+        $(error.data)>"
+    str
+end
+type UnrecognizedErrorType <: Exception
+    error::OfpError
+end
+type UnrecognizedErrorCode <: Exception
+    error::OfpError
 end
 # Description of physical port
 immutable OfpPhyPort <: OfpStruct
@@ -374,42 +483,58 @@ function bytes(match::OfpMatch)
         bytes(match.tp_dst)
     byts
 end
-immutable OfpActionHeader <: OfpStruct
-    htype::Uint16 # One of OFPAT_*. XXX Accroding to spec it should be "type",
+# XXX Using the naming from the spec. It is not really a header but rather
+# something of a supertype for all actions. OfpAction would be a more suitable
+# name.
+abstract OfpActionHeader <: OfpStruct
+immutable OfpActionOutput <: OfpActionHeader
+    htype::Uint16 # OFPAT_OUTPUT. XXX Accroding to spec it should be "type",
                     # which in Julia is a keyword however.
     len::Uint16 # Length of action, including this header. This is the length of
-                # action, including any padding to make it 64-bit algined.
-    # pad::Bytes Length: 4
+                # action, including any padding to make it 64-bit algined. 8.
+    port::Uint16 # Output port.
+    max_len::Uint16 # Max length to send to the controller.
+    OfpActionOutput(port::Uint16, max_len::Uint16) = new(OFPAT_OUTPUT,
+        uint16(8), port, max_len)
 end
-give_length(actionheader::Type{OfpActionHeader}) = 8
-function bytes(actionheader::OfpActionHeader)
-    byts::Bytes = zeros(Uint8, 8)
-    byts[1:2] = bytes(actionheader.htype)
-    byts[3:4] = bytes(actionheader.len)
+# TODO Probably it would be best to add methods to Base.length for all the
+    # special types. => rename all give_length methods to be methods of
+    # Base.length or whichever the standard length function is.
+give_length(action::OfpActionHeader) = action.len 
+# TODO All the other actions.
+function bytes(action::OfpActionOutput)
+    byts::Bytes = zeros(Uint8, give_length(action))
+    byts[1:2] = bytes(action.htype)
+    byts[3:4] = bytes(action.len)
+    byts[5:6] = bytes(action.port)
+    byts[7:8] = bytes(action.max_len)
     byts
 end
-function bytes(headers::Vector{OfpActionHeader})
-    numh = length(headers)
-    hlen = give_length(OfpActionHeader)
-    byts::Bytes = zeros(Uint8, numh*hlen)
-    for i = 1:numh
-        byts[hlen*(i-1)+1:hlen*i] = bytes(headers[i])
+function bytes(actions::Vector{OfpActionHeader})
+    blen = 0
+    # TODO Use map and summaton.
+    for a in actions
+        blen += give_length(a)
+    end
+    byts::Bytes = zeros(Uint8, blen)
+    # TODO Functional style?
+    pos = 1
+    for a in actions
+        abyts = bytes(a)
+        alen = length(abyts)
+        byts[pos:pos + alen - 1] = abyts
+        pos += alen
     end
     byts
 end
-OfpActionHeader(body::Bytes) = OfpActionHeader(btoui(body[1:2]),
-    btoui(body[3:4]))
-OfpActionHeader(htype::Unsigned, len::Unsigned) = OfpActionHeader(convert(Uint16, htype),
-    convert(Uint16, len))
-OfpActionHeaders(body::Bytes) = begin
-    numheaders = length(body)/8
-    headers::Vector{OfpActionHeader} = Array(OfpActionHeader, numheaders)
-    for i = 1:numheaders
-        headers[i] = OfpActionHeader(body[(i - 1)*8+1:i*8])
+function give_length(actions::Vector{OfpActionHeader})
+    len = 0
+    # XXX This could be done more elegantly by combingin map and sum.
+    for a in actions
+        len += give_length(a)
     end
-    headers
+    len
 end
-give_length(actionheaders::Vector{OfpActionHeader}) = length(actionheaders)*give_length(OfpActionHeader)
 # Packet in messages
 immutable OfpPacketIn <: OfpMessage
     header::OfpHeader 
@@ -423,7 +548,9 @@ immutable OfpPacketIn <: OfpMessage
                            # field in the header. Because of padding, offsetof(struct ofp_packet_in,
                            # data) == sizeof(struct ofp_packet_in) - 2.
 end
-tostring(msg::OfpPacketIn) = "<header: $(tostring(msg.header)), buffer_id: $(msg.buffer_id), total_len: $(msg.total_len), in_port: $(msg.in_port), reason: $(msg.reason), data: $(msg.data)>"
+tostring(msg::OfpPacketIn) = "<header: $(tostring(msg.header)), buffer_id:
+    $(msg.buffer_id), total_len: $(msg.total_len), in_port: $(msg.in_port), reason:
+    $(msg.reason), data: $(msg.data)>"
 OfpPacketIn(header::OfpHeader, body::Bytes) = begin
     datalen = length(body) - 10
     data = zeros(Uint8, datalen)
@@ -464,19 +591,6 @@ type OfpFlowMod <: OfpMessage
     actions::Vector{OfpActionHeader} # The action length is inferred from the
                                         # length field in the header.
     header::OfpHeader
-    OfpFlowMod(header::OfpHeader, body::Bytes) = begin
-        OfpFlowMod(OfpMatch(body[1:40]), # match
-        btoui(body[41:48]), # cookie
-        btoui(body[49:50]), # command
-        btoui(body[51:52]), # idle_timeout
-        btoui(body[53:54]), # hard_timeout
-        btoui(body[55:56]), # priority
-        btoui(body[57:60]), # buffer_id
-        btoui(body[61:62]), # out_port
-        btoui(body[63:64]), # flags
-        OfpActionHeaders(body[65:end]), # actions
-        header) # header 
-    end
     # Since the header needs to contain the length of the whole message, the
     # messages are kind of self-referential. Thus we first create an unfinished
     # object that is missing the header, then we obtain its length, which is
@@ -488,14 +602,14 @@ type OfpFlowMod <: OfpMessage
         idle_timeout::Uint16, hard_timeout::Uint16, priority::Uint16,
         buffer_id::Uint32, out_port::Uint16, flags::Uint16,
         actions::Vector{OfpActionHeader}) = begin
-        # Create the partially initialized object.
-        flowmod = new(match, cookie, command, idle_timeout, hard_timeout,
-            priority, buffer_id, out_port, flags, actions) 
-        # Get its length and create the corresponding header.
-        header::OfpHeader = OfpHeader(OFPT_FLOW_MOD,
-            uint16(give_length(flowmod)))
-        flowmod.header = header
-        flowmod
+            # Create the partially initialized object.
+            flowmod = new(match, cookie, command, idle_timeout, hard_timeout,
+                priority, buffer_id, out_port, flags, actions) 
+            # Get its length and create the corresponding header.
+            header::OfpHeader = OfpHeader(OFPT_FLOW_MOD,
+                uint16(give_length(flowmod)))
+            flowmod.header = header
+            flowmod
     end
 end
 give_length(flowmod::OfpFlowMod) = give_length(OfpHeader) + give_length(OfpMatch) + 24 + give_length(flowmod.actions)
@@ -548,9 +662,9 @@ function processrequest(message::OfpMessage, socket::TcpSocket)
             info("Got PACKET_IN: $(tostring(message))")
             # Assuming we just got the ARP request from host 1
             # TODO send a message to forward broadcasts
-            write(socket, bytes(create_arp_request_flowmod()))
+            write(socket, bytes(create_arp_request_flowmod(message.buffer_id)))
         elseif message.header.msgtype == OFPT_ERROR
-            warn("Got ERROR")
+            warn("Got ERROR: $(tostring(message))")
         end
     catch e
         Base.error_show(STDERR, e, catch_backtrace())
@@ -580,10 +694,15 @@ function assemblemessage(header::OfpHeader, body::Bytes)
     end
 end
 
-function create_arp_request_flowmod()
+function create_arp_request_flowmod(buffer_id::Uint32)
+    actions::Vector{OfpActionHeader} = Array(OfpActionHeader, 1)
+    actions[1] = OfpActionOutput(
+        OFPP_ALL, # Port.
+        0x0100 # max_len.
+    )
     OfpFlowMod(
         OfpMatch(
-            uint32(0), # Wildcards fields
+            uint32(OFPFW_ALL), # Wildcards fields
             0x0000, # Input switch port.
             zeros(Uint8, OFP_MAX_ETH_ALEN), # Length: OFP_MAX_ETH_ALEN; Ethernet source address.
             zeros(Uint8, OFP_MAX_ETH_ALEN), # Length: OFP_MAX_ETH_ALEN; Ehternet destination address.
@@ -602,13 +721,11 @@ function create_arp_request_flowmod()
         uint16(60), # idle_timeout; XXX What is a good/default value here?
         uint16(60), # hard_timeout; XXX What is a good/default value here?
         uint16(0), # priority
-        uint32(0), # buffer_id; XXX set the buffer id based on the PACKET_IN
-        uint16(OFPP_NONE), # out_port.
+        uint32(buffer_id), # buffer_id; The buffer id is set based on the
+            # corresponding value in PACKET_IN
+        uint16(OFPP_ALL), # out_port.
         uint16(OFPFF_SEND_FLOW_REM), # flags.
-        [OfpActionHeader(
-            OFPAT_OUTPUT, # header type.
-            0x0008 # Action length.
-        )] # actions
+        actions # actions.
     )
 end
 
@@ -685,4 +802,5 @@ function sendhello()
 end
 
 start_server()
+end
 

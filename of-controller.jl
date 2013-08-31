@@ -1,4 +1,5 @@
 module OpenFlow
+# TODO Put in some asserts at least until there will be some tests.
 # XXX isn't there some kind of type I can define for this?
 # XXX this type should convert between string representation and integers by
 # itself efficiently
@@ -273,7 +274,7 @@ give_length(header::Type{OfpHeader}) = 8
 abstract OfpMessage <: OfpStruct
 immutable OfpError <: OfpMessage
     header::OfpHeader
-    etype::Uint16 # Should be "type", which however is a keyword in Julia.
+    typ::Uint16 # Should be "type", which however is a keyword in Julia.
     code::Uint16 
     data::Bytes # ASCII text for OFPET_HELLO FAILED, at least 64 bytes of the
         # failed request for OFP_BAD_REQUEST CODE, OFP_BAD_ACTION_CODE, 
@@ -290,17 +291,17 @@ end
 function tostring(error::OfpError)
     # XXX Solve this in a nicer way. Using reflection, or a dictionary or
     # anything, but hard coding.
-    typestr = if error.etype == OFPET_HELLO_FAILED
+    typestr = if error.typ == OFPET_HELLO_FAILED
         "OFPET_HELLO_FAILED"
-    elseif error.etype == OFPET_BAD_REQUEST
+    elseif error.typ == OFPET_BAD_REQUEST
         "OFPET_BAD_REQUEST"
-    elseif error.etype == OFPET_BAD_ACTION
+    elseif error.typ == OFPET_BAD_ACTION
         "OFPET_BAD_ACTION"
-    elseif error.etype == OFPET_FLOW_MOD_FAILED
+    elseif error.typ == OFPET_FLOW_MOD_FAILED
         "OFPET_FLOW_MOD_FAILED"
-    elseif error.etype == OFPET_PORT_MOD_FAILED
+    elseif error.typ == OFPET_PORT_MOD_FAILED
         "OFPET_PORT_MOD_FAILED"
-    elseif error.etype == OFPET_QUEUE_OP_FAILED
+    elseif error.typ == OFPET_QUEUE_OP_FAILED
         "OFPET_QUEUE_OP_FAILED"
     else
         throw(UnrecognizedErrorType(error))
@@ -327,7 +328,7 @@ function tostring(error::OfpError)
         throw(UnrecognizedErrorCode(error))
     end
     str::String = "<header: $(tostring(error.header)), type:
-        $(typestr)($(error.etype)), code: $(codestr)($(error.code)), data:
+        $(typestr)($(error.typ)), code: $(codestr)($(error.code)), data:
         $(error.data)>"
     str
 end
@@ -487,27 +488,16 @@ end
 # something of a supertype for all actions. OfpAction would be a more suitable
 # name.
 abstract OfpActionHeader <: OfpStruct
-immutable OfpActionOutput <: OfpActionHeader
-    htype::Uint16 # OFPAT_OUTPUT. XXX Accroding to spec it should be "type",
-                    # which in Julia is a keyword however.
-    len::Uint16 # Length of action, including this header. This is the length of
-                # action, including any padding to make it 64-bit algined. 8.
-    port::Uint16 # Output port.
-    max_len::Uint16 # Max length to send to the controller.
-    OfpActionOutput(port::Uint16, max_len::Uint16) = new(OFPAT_OUTPUT,
-        uint16(8), port, max_len)
-end
 # TODO Probably it would be best to add methods to Base.length for all the
     # special types. => rename all give_length methods to be methods of
     # Base.length or whichever the standard length function is.
 give_length(action::OfpActionHeader) = action.len 
-# TODO All the other actions.
-function bytes(action::OfpActionOutput)
+function bytes(action::OfpActionHeader)
     byts::Bytes = zeros(Uint8, give_length(action))
-    byts[1:2] = bytes(action.htype)
+    byts[1:2] = bytes(action.typ)
     byts[3:4] = bytes(action.len)
-    byts[5:6] = bytes(action.port)
-    byts[7:8] = bytes(action.max_len)
+    # subbytes start after the length field
+    byts[5:end] = subbytes(action)
     byts
 end
 function bytes(actions::Vector{OfpActionHeader})
@@ -534,6 +524,177 @@ function give_length(actions::Vector{OfpActionHeader})
         len += give_length(a)
     end
     len
+end
+immutable OfpActionOutput <: OfpActionHeader
+    typ::Uint16 # OFPAT_OUTPUT. XXX Accroding to spec it should be "type",
+                    # which in Julia is a keyword however.
+    len::Uint16 # Length of action, including this header. This is the length of
+                # action, including any padding to make it 64-bit algined. 8.
+    port::Uint16 # Output port.
+    max_len::Uint16 # Max length to send to the controller.
+    OfpActionOutput(port::Uint16, max_len::Uint16) = new(OFPAT_OUTPUT,
+        uint16(8), port, max_len)
+end
+function subbytes(action::OfpActionOutput)
+    byts::Bytes = zeros(Uint8, give_length(action) - 4)
+    byts[1:2] = bytes(action.port)
+    byts[3:4] = bytes(action.max_len)
+    byts
+end
+immutable OfpActionEnque <: OfpActionHeader
+    typ::Uint16 # OFPAT_ENQUEUE. XXX Accroding to spec it should be "type",
+                    # which in Julia is a keyword however.
+    len::Uint16 # Length of action, including this header. This is the length of
+                # action, including any padding to make it 64-bit algined. 8.
+    port::Uint16 # Port that queue belongs to. Should refer to a vlid physical
+        # port (i.e. < OFPP_MAX) or OFPP_IN_PORT.
+    # pad::Vector{Uint8} Length: 6 bytes for 64-bit alignment
+    queue_id::Uint32 # Where to enqueue the packets.
+    OfpActionEnqueue(port::Uint16, queue_id::Uint32) = new(OFPAT_ENQUEUE,
+        uint16(16), port, queue_id)
+end
+function subbytes(action::OfpActionEnque)
+    byts::Bytes = zeros(Uint8, give_length(action) - 4)
+    byts[1:2] = bytes(action.port)
+    byts[end-3:end] = bytes(action.queue_id)
+    byts
+end
+immutable OfpActionVlanVid <: OfpActionHeader
+    typ::Uint16 # OFPAT_OUTPUT. XXX Accroding to spec it should be "type",
+                    # which in Julia is a keyword however.
+    len::Uint16 # Length of action, including this header. This is the length of
+                # action, including any padding to make it 64-bit algined. 8.
+    vlan_vid::Uint16 # VLAN id.
+    # pad::Vector{Uint8} Length: 2 bytes for 64-bit alignment
+    OfpActionVlanVid(vlan_vid::Uint16) = new(OFPAT_SET_VLAN_VID,
+        uint16(8), vlan_vid)
+end
+function subbytes(action::OfpActionVlanVid)
+    byts::Bytes = zeros(Uint8, give_length(action) - 4)
+    byts[1:2] = bytes(action.vlan_vid)
+    byts
+end
+immutable OfpActionVlanPcp <: OfpActionHeader
+    typ::Uint16 # OFPAT_SET_VLAN_PCP. XXX Accroding to spec it should be "type",
+                    # which in Julia is a keyword however.
+    len::Uint16 # Length of action, including this header. This is the length of
+                # action, including any padding to make it 64-bit algined. 8.
+    vlan_pcp::Uint8 # VLAN priority.
+    # pad::Vector{Uint8} Length: 3
+    OfpActionVlanPcp(vlan_pcp::Uint8) = new(OFPAT_SET_VLAN_PCP, uint16(8),
+        vlan_pcp)
+end
+function subbytes(action::OfpActionVlanPcp)
+    byts::Bytes = zeros(Uint8, give_length(action) - 4)
+    byts[1] = bytes(action.vlan_vid)
+    byts
+end
+# Exception for message constructors which rely on providing the right constant
+# as message type.
+type WrongMessageType <: Exception
+end
+# Excpetion thrown if the constructor arguments do not satisfy some invariance
+# constraints.
+type MessageInvarianceException <: Exception
+end
+# OFPAT_SET_DL_SRC/DST
+immutable OfpActionDlAddress <: OfpActionHeader
+    typ::Uint16 # OFPAT_SET_DL_SRC/DST. XXX Accroding to spec it should be "type",
+                    # which in Julia is a keyword however.
+    len::Uint16 # Length of action, including this header. This is the length of
+                # action, including any padding to make it 64-bit algined. 8.
+    dl_addr::Bytes # Length: OFP_MAX_ETH_ALEN; Ethernet address.
+    # pad::Bytes Length: 6
+    OfpActionDlAddress(typ::Uint16, dl_addr::Bytes) = begin
+        if typ != OFPAT_SET_DL_SRC && typ != OFPAT_SET_DL_DST
+            throw(WrongMessageType())
+        end
+        if(length(dl_addr) != OFP_MAX_ETH_ALEN)
+            throw(MessageInvarianceException())
+        end
+        new(typ, uint16(16), dl_addr)
+    end
+end
+function subbytes(action::OfpActionDlAddress)
+    byts::Bytes = zeros(Uint8, give_length(action) - 4)
+    byts[1:OFP_MAX_ETH_ALEN] = bytes(action.dl_addr)
+    @assert length(byts) - OFP_MAX_ETH_ALEN == 6
+    byts
+end
+# OFPAT_SET_NW_SRC/DST
+immutable OfpActionNwAddress <: OfpActionHeader
+    typ::Uint16 # OFPAT_SET_NW_SRC/DST. XXX Accroding to spec it should be "type",
+                    # which in Julia is a keyword however.
+    len::Uint16 # Length of action, including this header. This is the length of
+                # action, including any padding to make it 64-bit algined. 8.
+    nw_addr::Uint32 # IP address.
+    OfpActionNwAddress(typ::Uint16, nw_addr::Uint32) = begin
+        if typ != OFPAT_SET_NW_SRC && typ != OFPAT_SET_NW_DST
+            throw(WrongMessageType())
+        end
+        new(typ, uint16(8), nw_addr)
+    end
+end
+function subbytes(action::OfpActionNwAddress)
+    byts::Bytes = zeros(Uint8, give_length(action) - 4)
+    byts[1:4] = bytes(action.nw_addr)
+    @assert length(byts) - 4 == 0
+    byts
+end
+# OFPAT_SET_NW_TOS
+immutable OfpActionNwTos <: OfpActionHeader
+    typ::Uint16 # OFPAT_SET_NW_TOS. XXX Accroding to spec it should be "type",
+                # which in Julia is a keyword however.
+    len::Uint16 # Length of action, including this header. This is the length of
+                # action, including any padding to make it 64-bit algined. 8.
+    nw_tos::Uint8 # IP ToS (DSCP field, 6 bits).
+    # pad::Bytes Length 3.
+    OfpActionNwTos(nw_tos::Uint8) = new(OFPAT_SET_NW_TOS, uint16(8), nw_tos)
+end
+function subbytes(action::OfpActionNwTos)
+    byts::Bytes = zeros(Uint8, give_length(action) - 4)
+    byts[1] = action.nw_tos
+    @assert length(byts) - 1 == 3
+    byts
+end
+# OFPAT_TP_PORT
+immutable OfpActionTpPort
+    typ::Uint16 # OFPAT_SET_TP_SRC/DST. XXX Accroding to spec it should be "type",
+                # which in Julia is a keyword however.
+    len::Uint16 # Length of action, including this header. This is the length of
+                # action, including any padding to make it 64-bit algined. 8.
+    tp_port::Uint16 # TCP/UDP port.
+    # pad::Bytes Length 2.
+    OfpActionNwTos(tp_port::Uint16) = begin
+        if typ != OFPAT_SET_TP_SRC && typ != OFPAT_SET_TP_DST
+            throw(WrongMessageType())
+        end
+        new(typ, uint16(8), tp_port)
+    end
+end
+function subbytes(action::OfpActionTpPort)
+    byts::Bytes = zeros(Uint8, give_length(action) - 4)
+    byts[1:2] = bytes(action.tp_port)
+    @assert length(byts) - 1 == 2
+    byts
+end
+# OFPAT_VENDOR
+immutable OfpActionVendor
+    typ::Uint16 # OFPAT_VENDOR. XXX Accroding to spec it should be "type",
+                # which in Julia is a keyword however.
+    len::Uint16 # Length of action, including this header. This is the length of
+                # action, including any padding to make it 64-bit algined. 8.
+    vendor::Uint32 # Vendor ID, which takes the same form as in OfpVendorHeader.
+    body::Bytes # Vendor-specific extension.
+    OfpActionVendorHeader(vendor::Uint32, body::Bytes) = new(OFPAT_VENDOR,
+        uint16(8 + length(body)), vendor, body)
+end
+function subbytes(action::OfpActionVendor)
+    byts::Bytes = zeros(Uint8, give_length(action) - 4)
+    byts[1:4] = bytes(action.vendor)
+    bytes[5:end] = action.body
+    @assert length(byts) - 1 == 0
+    byts
 end
 # Packet in messages
 immutable OfpPacketIn <: OfpMessage

@@ -3,6 +3,14 @@ module OpenFlow
 # XXX isn't there some kind of type I can define for this?
 # XXX this type should convert between string representation and integers by
 # itself efficiently
+# TODO full spec
+# TODO API
+# TODO For all types provide bytes, both constructors (fields and bytes),
+# string. Use constructors and bytes in unit tests.
+# TODO Minimum constructors. Create all which is implicit automatically in an
+# inner constructor.
+# TODO Tests
+# TODO TLS
 
 # OFP_TYPE
 # Immutable messages
@@ -226,7 +234,11 @@ const OFPMFC_BAD_HW_ADDR = 0x01 # Specified hardware address is wrong.
 const OFPQOFC_BAD_PORT = 0x00 # Invalid port (or port does not exist).
 const OFPQOFC_BAD_QUEUE = 0x01 # Queue does not exist.
 const OFPQOFC_EPERM = 0x02 # Permissions error.
-
+# OfpQueueProperties
+const OFPQT_NONE = 0 # No property defined for a queue (default).
+const OFPQT_MIN_RATE = 1 # Minimu datarate guaranteed.
+                           # Other rates should be added here (i.e. max rate,
+                           # precedence, etc).
 # Other used constants
 const OFP_MAX_ETH_ALEN = 6
 const OFP_MAX_PORT_NAME_LEN = 16
@@ -244,6 +256,10 @@ end
 OfpHeader(msgtype::Uint8, msglen::Uint16, msgidx::Uint32=0x00000000) = OfpHeader(0x01,
     msgtype, msglen, msgidx)
 # XXX implement proper conversion functions
+# TODO String conversion in Julia is idiomatic by actually creating a new string
+# object using the original type as argument ==> import the string function (is
+# it not imported implicitly already?) and provide external constructor methods
+# for it. ==> probably all "tostring" just need to be renamed to "string".
 function tostring(header::OfpHeader)
     "<Version: $(header.protoversion), type: $(header.msgtype), length: $(header.msglen), idx: $(header.msgidx)>"
 end
@@ -272,6 +288,175 @@ end
 give_length(header::Type{OfpHeader}) = 8
 
 abstract OfpMessage <: OfpStruct
+# Query for port configuration.
+# ofp_queue_get_config_request
+immutable OfpQueueGetConfigRequest <: OfpMessage
+    header::OfpHeader
+    port::Uint16 # Port to be queried. Should refer to a valid physical port
+                    # (i.e. < OFPP_MAX).
+    # pad::Bytes Length: 2; 32-bits alignment.
+    OfpQueueGetConfigRequest(port::Uint16) =
+        new(OfpHeader(OFPT_QUEUE_GET_CONFIG_REQUEST, uint16(12)), port)
+end
+give_length(::Type{OfpQueueGetConfigRequest}) =
+    give_length(OfpHeader) + 4
+# TODO create a macro @bytes
+function bytes(queueconfigreq::OfpQueueGetConfigRequest)
+    byts::Bytes = zeros(Uint8, give_length(OfpQueueGetConfigRequest))
+    byts[1:8] = queueconfigreq.header
+    byts[9:10] = queueconfigreq.port
+    byts
+end
+# Creating a new type to bundle all OfpQueueProperties.
+abstract OfpQueueProp <: OfpStruct
+# Common description for a queue.
+immutable OfpQueuePropHeader <: OfpStruct
+    property::Uint16 # One of OFPQT_*.
+    len::Uint16 # Length of property, including this header.
+    # pad::Bytes Length: 4; 64-bit alignment.
+end
+function bytes(queuepropheader::OfpQueuePropHeader)
+    byts::Bytes = zeros(Uint8, give_length(queuepropheader))
+    byts[1:2] = bytes(queuepropheader.property)
+    byts[3:4] = bytes(queuepropheader.len)
+    byts
+end
+OfpQueuePropHeader(body::Bytes) = OfpQueuePropHeader(btoui(body[1:2]), btoui(body[3:4]))
+give_length(queuepropheader::OfpQueuePropHeader) = 8
+immutable OfpQueuePropNone <: OfpQueueProp
+    header::OfpQueuePropHeader
+    function OfpQueuePropNone(header::OfpQueuePropHeader) 
+        @assert header.property == OFPQT_NONE
+        @assert header.len == 8
+        new(header)
+    end
+end
+immutable UnknownQueuePropert <: Exception
+end
+# XXX Why is it not allowed to create a constructor for the abstract type?
+function OfpQueuePropFactory(body::Bytes)
+    header::OfpQueuePropHeader = OfpQueuePropHeader(body[1:8])
+    if header.property == OFPQT_MIN_RATE
+        @assert length(body) == header.len
+        return OfpQueuePropMinRate(header, body[9:end])
+    elseif header.propert == OFPQT_NONE
+        @assert length(body) == 8
+        return OfpQueuePropNone(header)
+    else
+        throw(UnknownQueueProperty())
+    end
+end
+function nextqueueprop(body::Bytes)
+    header::OfpQueuePropHeader = OfpQueuePropHeader(body[1:8])
+    (OfpQueuePropFactory(body[1:8 + header.len]), length(body) > 8 + header.len ?
+        body[8 + header.len + 1:end] : nothing)
+end
+function OfpQueueProps(body::Bytes)
+    props = Array(OfpQueueProp, 1)
+    bdy = body
+    while bdy != nothing
+        (prop::OfpQueueProp, bdy) = nextqueueprop(bdy)
+        append(props, [prop])
+    end
+    props
+end
+# Min-Rate queue property description. 
+immutable OfpQueuePropMinRate <: OfpQueueProp
+    header::OfpQueuePropHeader # prop: OFPQT_MIN_RATE, len: 16.
+    rate::Uint16 # In 1/10 of a percent; >1000 -> disabled.
+    # pad::Bytes Length 6; 64-bit alginment.
+    OfpQueuePropMinRate(rate::Uint16) =
+        new(OfpQueuePropHeader(uint16(OFPQT_MIN_RATE), uint16(16)), rate)
+end
+function OfpQueuePropMinRate(header::OfpQueuePropHeader, body::Bytes)
+    @assert header.property == OFPQT_MIN_RATE
+    @assert header.len == 16
+    OfpQueuePropMinRate(btoui(body))
+end
+give_length(queuepropminrate::OfpQueuePropMinRate) =
+    queuepropminrate.header.len
+function bytes(propminrate::OfpQueuePropMinRate)
+    byts::Bytes = zeros(Uint8, give_length(propminrate))
+    byts[1:8] = bytes(propminrate.header)
+    byts[9:10] = bytes(rate)
+    byts
+end
+# Full description for a queue.
+immutable OfpPacketQueue <: OfpStruct
+    queue_id::Uint32 # id for the specific queue.
+    len::Uint16 # Length in bytes of this queue desc.
+    # pad::Bytes Length: 2; 64-bit alignment.
+    properties::Vector{OfpQueueProp} # List of properties. XXX The spec lists
+        # OfpQueuePropHeader as type of properties. Probably however the list is
+        # not supposed to only contain the headers but also the full properties. 
+end
+function OfpPacketQueue(body::Bytes)
+    OfpPacketQueue(btoui(body[1:4], btoui(body[5:6]),
+        OfpQueueProps(body[9:end])))
+end
+function nextpacketqueue(body::Bytes)
+    qlen = btoui(body[5:6])
+    (OfpPacketQueue(body[1:qlen]), length(body) > qlen ?
+        body[qlen + 1:end] : nothing)
+end
+function OfpPacketQueues(body::Bytes)
+    pqs = Array(OfpPacketQueue, 1)
+    bdy = body
+    while bdy != nothing
+        (pq::OfpPacketQueue, bdy) = nextpacketqueue(bdy)
+        append(pqs, [pq])
+    end
+    pqs
+end
+give_length(queue::OfpPacketQueue) = 8 + give_length(queue.properties)
+function give_length(qs::Vector{OfpPacketQueue})
+    len = 0
+    for q in queues
+        len += give_length(q)
+    end
+    len
+end
+function bytes(queue::OfpPacketQueue)
+    byts::Bytes = zeros(Uint8, give_length(queue))
+    byts[1:4] = bytes(queue.queue_id)
+    byts[5:6] = bytes(queue.len)
+    byts[9:end] = bytes(queue.properties)
+    byts
+end
+function bytes(qs::Vector{OfpPacketQueue})
+    byts::Bytes = zeros(Uint8, give_length(qs))
+    pos = 1
+    for q in qs
+        bs = bytes(q)
+        len = length(bs)
+        byts[pos:pos+len-1] = bs
+        pos += len
+    end
+    byts
+end
+# Queue configuration for a given port.
+# ofp_queue_get_config_reply
+immutable OfpQueueGetConfigReply <: OfpMessage
+    port::Uint16 
+    # pad::Bytes Length 6;
+    queues::Vector{OfpPacketQueue} # List of configured queues.
+    header::OfpHeader
+    function OfpQueueGetConfigReply(port::Uint16, queues::Vector{OfpPacketQueue})
+        configreply = new(port, queues)
+        len = give_length(configreply)
+        configreply.header = OfpHeader(OFPT_GET_CONFIG_REPLY, uint16(len))
+        configreply
+    end
+end
+OfpQueueGetConfigReply(header::OfpHeader, body::Bytes) = new(btoui(body[1:2]), OfpPacketQueues(body[9:end]), header)
+give_length(configreply::OfpQueueGetConfigReply) = give_length(OfpHeader) + 8 + give_length(configreply.queues)
+function bytes(configreply::OfpQueueGetConfigReply)
+    byts::Bytes = zeros(Uint8, give_length(configreply))
+    byts[1:8] = bytes(configreply.header)
+    byts[9:10] = bytes(configreply.port)
+    byts[17:end] = bytes(configreply.queues)
+    byts
+end
 immutable OfpError <: OfpMessage
     header::OfpHeader
     typ::Uint16 # Should be "type", which however is a keyword in Julia.
@@ -375,7 +560,7 @@ OfpPhyPort(bytes::Bytes) = begin
 end
 give_length(port::Type{OfpPhyPort}) = 26 + OFP_MAX_ETH_ALEN + OFP_MAX_PORT_NAME_LEN
 # Switch features
-immutable OfpFeatures <: OfpMessage
+immutable OfpSwitchFeatures <: OfpMessage
     header::OfpHeader
     datapath_id::Uint64 # Datapath unique ID. The lower 48-bits are for a MAC
                         # address, while the upper 16 bits are implementer-defined
@@ -388,7 +573,7 @@ immutable OfpFeatures <: OfpMessage
     ports::Vector{OfpPhyPort} # Port definitions. The number of ports is
                             # inferred from the length field in the header.
 end
-OfpFeatures(header::OfpHeader, body::Bytes) = begin
+OfpSwitchFeatures(header::OfpHeader, body::Bytes) = begin
     # XXX write the array of ports should be created by its own function that
     # takes the corresponding octects
     # compute the number of ports
@@ -397,17 +582,17 @@ OfpFeatures(header::OfpHeader, body::Bytes) = begin
     for p = 1:numports
         ports[p] = OfpPhyPort(body[25 + (p - 1)*48:25 + p*48 - 1])
     end
-    OfpFeatures(header, btoui(body[1:8]), btoui(body[9:12]), body[13],
+    OfpSwitchFeatures(header, btoui(body[1:8]), btoui(body[9:12]), body[13],
                 btoui(body[17:20]), btoui(body[21:24]), ports)
 end
-give_length(features::OfpFeatures) = begin
+give_length(features::OfpSwitchFeatures) = begin
     len = give_length(OfpHeader) + 16 
     for port in features.ports
         len += give_length(OfpPhyPort)
     end
     len
 end
-tostring(msg::OfpFeatures) = begin
+tostring(msg::OfpSwitchFeatures) = begin
     str = "<header: $(tostring(msg.header)), datapath_id: $(msg.datapath_id), n_buffers: $(msg.n_buffers), n_tables: $(msg.n_tables), capabilities: $(msg.capabilities), actions: $(msg.actions), ports: $(msg.ports)>"
 end
 # Switch configuration
@@ -793,6 +978,38 @@ bytes(flowmod::OfpFlowMod) = begin
     byts[9+matchlen+24:end] = actionbytes
     byts
 end
+immutable OfpPortMod <: OfpMessage
+    header::OfpHeader
+    port_no::Uint16
+    hw_addr::Bytes # Length: OFP_MAX_ETH_ALEN. The hardware address is not
+        # configurable. This is used to sanity-check the request, so it must be the
+        # same as returned in an ofp_phy_port struct.
+    config::Uint32 # Bitmap of OFPPC_* flags.
+    mask::Uint32 # Bitmap of OFPPC_* flags to be changed.
+    advertise::Uint32 # Bitmap of "ofp_port_feature"s. Zero all bits to prevent
+                        # any action taking place.
+    # pad::Byts Length 4. Pad to 64-bits.
+    OfpPortMod(port_no::Uint16, hw_addr::Bytes, config::Uint32,
+            mask::Uint32, advertise::Uint32) = new(OfpHeader(OFPT_PORT_MOD,
+            uint16(give_length(OfpPortMod))), port_no, hw_addr, config,
+            mask, advertise)
+end
+# TODO For all types for which the length can be inferred from the singleton
+# type, provide convenicen methods that will also work with instances of that
+# type.
+give_length(portmod::OfpPortMod) = give_length(portmod.header) + 16 +
+    OFP_MAX_ETH_ALEN
+function bytes(portmod::OfpPortMod)
+    byts::Bytes = zeros(Uint8, give_length(portmod))
+    byts[1:8] = bytes(portmod.header)
+    byts[9:10] = bytes(portmod.port_no)
+    byts[11:11 + OFP_MAX_ETH_ALEN - 1] = portmod.hw_addr
+    byts[11 + OFP_MAX_ETH_ALEN:11 + OFP_MAX_ETH_ALEN + 3] = portmod.config
+    byts[11 + OFP_MAX_ETH_ALEN + 4:11 + OFP_MAX_ETH_ALEN + 7] = portmod.mask
+    byts[11 + OFP_MAX_ETH_ALEN + 8:11 + OFP_MAX_ETH_ALEN + 11] =
+        portmod.advertise
+    byts
+end
 immutable OfpEmptyMessage <: OfpMessage
     header::OfpHeader
 end
@@ -842,7 +1059,7 @@ function assemblemessage(header::OfpHeader, body::Bytes)
         assert(length(body) == 0)
         return OfpEmptyMessage(header)
     elseif header.msgtype == OFPT_FEATURES_REPLY
-        return OfpFeatures(header, body)
+        return OfpSwitchFeatures(header, body)
     elseif header.msgtype == OFPT_GET_CONFIG_REPLY
         return OfpSwitchConfig(header, body)
     elseif header.msgtype == OFPT_PACKET_IN

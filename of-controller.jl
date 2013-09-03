@@ -3,13 +3,13 @@ module OpenFlow
 # XXX isn't there some kind of type I can define for this?
 # XXX this type should convert between string representation and integers by
 # itself efficiently
-# TODO full spec
-# TODO API
 # TODO For all types provide bytes, both constructors (fields and bytes),
 # string. Use constructors and bytes in unit tests.
+# TODO API
 # TODO Minimum constructors. Create all which is implicit automatically in an
 # inner constructor.
 # TODO Tests
+# TODO License
 # TODO TLS
 
 # OFP_TYPE
@@ -239,9 +239,34 @@ const OFPQT_NONE = 0 # No property defined for a queue (default).
 const OFPQT_MIN_RATE = 1 # Minimu datarate guaranteed.
                            # Other rates should be added here (i.e. max rate,
                            # precedence, etc).
+# OFP_STATS_TYPES
+const OFPST_DESC = 0x00 # Description of this OpenFlow switch. The request body
+    # is empty. The reply body is struct ofp_desc-stats.
+const OFPST_FLOW = 0x01 # Individual flow statistics. The request body is struct
+    # ofp_flow_stats_request. The reply body is an array of structu ofp_flow_stats.
+const OFPST_AGGREGATE = 0x02 # Aggregate flow statistics. The request body is
+    # struct ofp_aggregate_stats_request. The reply body is struct
+    # ofp_aggregate_reply.
+const OFPST_TABLE = 0x03 # Flow table statistics. The request body is empty. The
+    # reply body is an array of struct ofp_table_stats.
+const OFPST_PORT = 0x04 # Physical port statistics. The request body is struct
+    # ofp_port_stats_request. The reply body is an array of struct ofp_port_stats.
+const OFPST_QUEUE = 0x05 # Queue statistics for a port. The request body defines
+    # the port. The reply body is an array of struct ofp_queue_stats. 
+const OFPST_VENDOR = 0xffff # Vendor extension. The request and reply bodies
+    # begin witha 32-bit vendor ID, which takes the same form as in "struct
+    # ofp_vendor_header". The request and reply bodies are otherwise
+    # vendor-defined.
+# OFP_FLOW_REMOVED_REASON
+const OFPRR_IDLE_TIMEOUT = 0x00 # Flow idle time exceeded idle_timeout.
+const OFPRR_HARD_TIMEOUT = 0x01 # Time exceeded hard_timeout.
+const OFPRR_DELTE = 0x02 # Evicted by a DELETE flow mod.
 # Other used constants
 const OFP_MAX_ETH_ALEN = 6
 const OFP_MAX_PORT_NAME_LEN = 16
+const DESC_STR_LEN = 256
+const SERIAL_NUM_LEN = 32
+const OFP_MAX_TABLE_NAME_LEN = 32
 
 # We will be using a lot of byte/octect arrays here
 typealias Bytes Vector{Uint8}
@@ -710,6 +735,45 @@ function give_length(actions::Vector{OfpActionHeader})
     end
     len
 end
+function OfpActionHeaderFactory(body::Bytes)
+    typ::Uint16 = btoui(body[1:2])
+    # TODO Write all of those byte constructors used in this method.
+    if typ == OFPAT_OUTPUT
+        return OfpActionOutput(body)
+    elseif typ == OFPAT_ENQUEUE
+        return OfpActionEnque(body)
+    elseif typ == OFPAT_SET_VLAN_VID
+        return OfpActionVlanVid(body)
+    elseif typ == OFPAT_SET_VLAN_PCP
+        return OfpActionVlanPcp(body)
+    elseif typ == OFPAT_SET_DL_SRC || typ == OFPAT_SET_DL_DST
+        return OfpActionDlAddress(body)
+    elseif typ == OFPAT_SET_NW_SRC || typ == OFPAT_SET_NW_DST
+        return OfpActionNwAddress(body)
+    elseif typ == OFPAT_SET_NW_TOS
+        return OfpActionNwTos(body)
+    elseif typ == OFPAT_TP_PORT
+        return OfpActionTpPort(body)
+    elseif typ == OFPAT_SET_TP_SRC || typ == OFPAT_SET_TP_DST
+        # XXX What to do here?
+        return OfpAction(body)
+    elseif typ == OFPAT_VENDOR
+        return OfpActionVendor(body)
+    elseif typ == OFPAT_STRIP_VLAN
+        # XXX What to do here?
+        return OfpAction(body)
+    end
+end
+function nextactionheader(body::Bytes)
+    len = btoui(body[3:4])
+    (OfpActionHeaderFactory(body[1:len]), length(body) > len ? body[len + 1:end]
+        : nothing)
+end
+function OfpActionHeaders(body::Bytes)
+    # TODO Finish up.
+    actions::Vector{OfpActionHeader} = Array(OfpActionHeader, 0)
+    nextactionheader(body)
+end
 immutable OfpActionOutput <: OfpActionHeader
     typ::Uint16 # OFPAT_OUTPUT. XXX Accroding to spec it should be "type",
                     # which in Julia is a keyword however.
@@ -1017,6 +1081,298 @@ give_length(empty::Type{OfpEmptyMessage}) = give_length(OfpHeader)
 
 type UnrecognizedMessageError <: Exception
 end
+
+# New types that will be used to bundle the body-types for
+# ofp_stat_request. Furthermore it will serve for parameterizing
+# OfpStatsRequest.
+abstract OfpStatsRequestBody
+# ofp_stat_reply. Furthermore it will serve for parameterizing
+# OfpStatsReply.
+abstract OfpStatsReplyBody
+# Body of reply to OFPST_DESC request. Each entry is a NULL-terminated ASCII
+# string.
+immutable OfpDescStats <: OfpStatsReplyBody
+    # Strings are zero-padded to the left with '\0'
+    mfr_desc::ASCIIString # Length: DESC_STR_LEN; Manufacturer description.
+    hw_desc::ASCIIString # Length: DESC_STR_LEN; Hardware description.
+    sw_desc::ASCIIString # Length: DESC_STR_LEN; Software description.
+    serial_num::ASCIIString # Length: SERIAL_NUM_LEN; Serial number.
+    dp_desc::ASCIIString # Length: DESC_STR_LEN; Human readable description of
+        # datapath.
+end
+# TODO string
+# TODO bytes
+function OfpDescStats(body::Bytes)
+    mfr_desc::ASCIIString = ASCIIString(body[1:DESC_STR_LEN])
+    hw_desc::ASCIIString = ASCIIString(body[DESC_STR + 1:2DESC_STR_LEN])
+    sw_desc::ASCIIString = ASCIIString(body[2DESC_STR + 1:3DESC_STR_LEN])
+    serial_num::ASCIIString = ASCIIString(body[3DESC_STR + 1:3DESC_STR_LEN +
+        SERIAL_NUM_LEN])
+    dp_desc::ASCIIString = ASCIIString(body[3DESC_STR + SERIAL_NUM_LEN + 1:4DESC_STR_LEN +
+        SERIAL_NUM_LEN])
+    OfpDescStats(mfr_desc, hw_desc, sw_desc, serial_num, dp_desc)
+end
+give_length(::Type{OfpDescStats}) = 4DESC_STR_LEN + SERIAL_NUM_LEN
+# Body for ofp_stats_request for type OFPST_FLOW.
+immutable OfpFlowStatsRequest <: OfpStatsRequestBody
+    match::OfpMatch # Fields to match.
+    table_id::Uint8 # ID of table to read (from ofp_table_stats), 0xff for all
+        # tables or 0xfe for emergency. 
+    # pad::Uint8 Align to 32-bits.
+    out_port::Uint16 # Require matching entries to include this as an output
+        # port. A value of OFPP_NONE indicates no restriction. 
+end
+# TODO bytes constructor
+# TODO string
+function bytes(statsreq::OfpFlowStatsRequest)
+    byts::Bytes = zeros(Uint8, give_length(statsreq))
+    byts[1:40] = bytes(statsreq.match)
+    byts[41] = statsreq.table_id
+    byts[43:44] = statsreq.out_port
+    byts
+end
+give_length(::Type{OfpFlowStatsRequest}) = give_length(OfpMatch) + 4
+# Body of reply to OFPST_FLOW request.
+immutable OfpFlowStats <: OfpStatsReplyBody
+    length::Uint16 # Length of this entry.
+    table_id::Uint8 # ID of table flow came from.
+    # pad::Uint8
+    match::OfpMatch # Description of fields.
+    duration_sec::Uint32 # Time flow has been alive in seconds.
+    duration_nsec::Uint32 # Time flow has been alive in nanoseconds byeond
+        # duration_sec.
+    priority::Uint16 # Priority of the entry. Only meaningful when this is not
+        # an exact-match entry.
+    idle_timeout::Uint16 # Number of seconds idle before expiration.
+    hard_timeout::Uint16 # Number of secondsbefore expiration.
+    # pad::Bytes Length: 6; Align to 64-bits.
+    cookie::Uint64 # Opaque controller-issued identifier.
+    packet_count::Uint64 # Number of packets in flow.
+    byte_count::Uint64 # Number of bytes in flow.
+    actions::Vector{OfpActionHeader} # Actions.
+end
+# TODO bytes
+# TODO string
+give_length(flowstats::OfpFlowStats) = 48 + give_length(OfpMatch) + give_length(flowstats.actions)
+function OfpFlowStats(body::Bytes)
+    length::Uint16 = btoi(body[1:2])
+    table_id::Uint8 = body[3]
+    match::OfpMatch = OfpMatch(body[5:44])
+    duration_sec::Uint32 = btoui(body[45:48])
+    duration_nsec::Uint32 = btoui(body[49:52])
+    priority::Uint16 = btoui(body[53:54])
+    idle_timeout::Uint16 = btoui(body[55:56])
+    hard_timeout::Uint16 = btoui(body[57:58])
+    cookie::Uint64 = btoui(body[65:72])
+    packet_count::Uint64 = btoui(body[73:80])
+    byte_count::Uint64 = btoui(body[81:88])
+    actions::Vector{OfpActionHeader} = OfpActionHeaders(body[89:end])
+    OfpFlowStats(length, table_id, match, duration_sec, duration_nsec, priority,
+        idle_timeout, hard_timeout, cookie, packet_count, byte_count, actions)
+end
+
+# Body for ofp_stats_request of type OFPST_AGGREGATE
+immutable OfpAggregateStatsRequest <: OfpStatsRequestBody
+    match::OfpMatch # Fields to match.
+    table_id::Uint8 # ID of table to read (from ofp_table_stats). 0xff for all
+        # tables or 0xfe for emergency. 
+    # pad::Uint8 Align to 32 bits.
+    out_port::Uint16 # Require matchin entries to include this as an output
+        # port. A value of OFPP_ONE indicates no restriction.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+# Body of reply to OFPST_AGGREGATE request.
+immutable OfpAggregateStatsReply <: OfpStatsReplyBody
+    packet_count::Uint64 # Number of packets in flows.
+    byte_count::Uint64 # Number of bytes in flows. 
+    flow_count::Uint32 # Number of flows.
+    # pad::Bytes Length: 4; Align to 64 bits.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+# Body of reply to OFPST_TABLE request.
+immutable OfpTableStats <: OfpStatsReplyBody
+    table_id::Uint8 # Identifier of table. Lower numbered tables are consulted
+        # first.
+    # pad::Bytes Length: 3; Align to 32-bits.
+    name::ASCIIString # Length: OFP_MAX_TABLE_NAME_LEN
+    wildcards::Uint32 # Bitmap of OFPFW_* wildcards that are supported by the
+        # table.
+    max_entries::Uint32 # Max number of entries supported.
+    active_count::Uint32 # Number of active entries.
+    lookup_count::Uint64 # Number of packets looked up in table.
+    matched_count::Uint64 # Number of packets that hit table.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+# Body for ofp_stats_request of type OFPST_PORT.
+immutable OfpPortStatsRequest <: OfpStatsRequestBody
+    port_no::Uint16 # OFPST_PORT message must request statistics either for a
+        #single port (specified in port_no) or for all ports (if port_no ==
+        # OFPP_NONE).
+    # pad::Bytes Length: 6
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+# Body of reply to OFPST_PORT request. If a counter is unsupported, set the
+# field to all ones.
+immutable OfpPortStats <: OfpStatsReplyBody
+    port_no::Uint16
+    # pad::Bytes Length: 6; Align to 64-bits.
+    rx_packets::Uint64 # Number of received packets.
+    tx_packets::Uint64 # Number of transmitted packets.
+    rx_bytes::Uint64 # Number of received bytes.
+    tx_bytes::Uint64 # Number of transmitted bytes.
+    rx_dropped::Uint64 # Number of packets dropped by RX.
+    tx_dropped::Uint64 # Number of packets dropped by TX.
+    rx_errors::Uint64 # Number of receive errors. This is a super-set of more
+        # specific receive errors and should be greater than or equal to the sum
+        # of all rx_*_err values.
+    tx_errors::Uint64 # Number of transmit errors . Thsi is a super-set of more
+        # specific transmit errors and should be greater than or equal to the
+        # sum of all tx_*_err values (none currently defined.)
+    rx_frame_err::Uint64 # Number of frame alignment errors.
+    rx_over_err::Uint64 # Number of packets with RX overrun.
+    rx_crc_err::Uint64 # Number of CRC errors.
+    collisions::Uint64 # Number of collisions.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+immutable OfpQueueStatsRequest <: OfpStatsRequestBody
+    # TODO OFPT_ALL and OFPQ_ALL are nowhere defined yet.
+    port_no::Uint16 # All ports if OFPT_ALL.
+    # pad::Bytes Length:2; Align to 32-bits.
+    queue_id::Uint32 # All queues if OFPQ_ALL.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+# 
+immutable OfpQueueStats <: OfpStatsReplyBody
+    port_no::Uint16
+    # pad::Bytes Length: 2; Align to 32-bits.
+    queue_id::Uint32 # Queue id.
+    tx_bytes::Uint64 # Number of transmitted bytes.
+    tx_packets::Uint64 # Number of transmitted packets.
+    tx_errors::Uint64 # Number of packets dropped due to overrun.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+immutable OfpVendorStatsRequest <: OfpStatsRequestBody
+    vendor_id::Bytes # Length: 4
+    body::Bytes # The rest of the message is vendor-defined.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+immutable OfpVendorStatsReply <: OfpStatsReplyBody
+    vendor_id::Bytes # Length: 4
+    body::Bytes # The rest of the message is vendor-defined.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+# ofp_stats_request
+immutable OfpStatsRequest{T<:OfpStatsRequestBody} <: OfpMessage
+    header::OfpHeader
+    typ::Uint16 # One of the OFPST_* constants.
+    flags::Uint16 # OFPSF_REQ_* flags (none yet defined).
+    body::T  # Body of the request.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+# ofp_stats_reply
+immutable OfpStatsReply{T<:OfpStatsReplyBody} <: OfpMessage
+    header::OfpHeader
+    typ::Uint16 # One of the OFPST_* constants.
+    flags::Uint16 # OFPSF_REPLY_* flags.
+    body::T # Body of the reply.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+# ofp_packet_out
+# Send packet (controller -> datapath).
+immutable OfpPacketOut <: OfpMessage
+    header::OfpHeader
+    buffer_id::Uint32 # ID assigned by datapath (-1 if none).
+    in_port::Uint16 # Packet's input port (OFPP_NONE if none).
+    actions_len::Uint16 # Size of action array in bytes.
+    actions::Vector{OfpActionHeader} # Actions.
+    # data::Bytes XXX For some reason this is commented out in the spec.
+end
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+# Flow removed (datapath -> controller).
+# ofp_flow_removed
+immutable OfpFlowRemoved <: OfpMessage
+    header::OfpHeader
+    match::OfpMatch # 
+    cookie::Uint64 # 
+    priority::Uint16 # Priority level of flow entry.
+    reason::Uint8 # One of OFPRR_*.
+    # pad::Uint8; Align to 32-bits.
+    duration_sec::Uint32 # Time flow was alive in seconds.
+    duration_nsec::Uint32 # Time flow was alive in nanoseconds beyond
+        # duration_sec.
+    idle_timeout::Uint16 # Idle timeout from original flow mod.
+    # pad2::Bytes Length:2; Align to 64-bits.
+    packet_count::Uint64
+    byte_count::Uint64
+end
+# TODO Inner constructor
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
+
+# Vendor extension.
+# ofp_vendor_header
+immutable OfpVendorHeader <: OfpMessage
+    header::OfpHeader # Type OFPT_VENDOR
+    vendor::Uint32 # Vendor ID:
+                    # - MSB 0: low-order bytes are IEEE OUI.
+                    # - MSB != 0: defined by OpenFlow consortium.
+    body::Bytes # Vendor-defined arbitrary additional data.
+end
+# TODO Inner constructor
+# TODO bytes
+# TODO bytes constructor
+# TODO string
+# TODO give_length
 
 function processrequest(message::OfpMessage, socket::TcpSocket)
     try

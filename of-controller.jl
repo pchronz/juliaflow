@@ -391,7 +391,35 @@ macro bytes(typ)
         end
     end
 end
-# TODO A @string macro; probably quite similar to the bytes macro
+# A @string macro; probably quite similar to the bytes macro
+# TODO add a second argument, that will allow us to provide a hint on the depth
+# of this string and thus how many tabs to prepend to each line.
+macro string(typ)
+    t::DataType = eval(typ)
+    fields::Vector{Symbol} = names(t)
+    typs::Tuple = t.types
+    exs::Vector{Expr} = Array(Expr, length(fields))
+    exs[1] = :(strs[1] = string("\n$(repeat("\t", tabs))Type: ", $(typ), "\n"))
+    for i = 2:length(typs)
+        objacc = Expr(:., :obj, Expr(:quote, fields[i]))
+        if typs[i] <: OfpStruct || eltype(typs[i]) <:OfpStruct
+            exs[i] = :(strs[$(i)] = string($(Expr(:quote, fields[i])), " = ",
+                string($(objacc), tabs + 1), "\n"))
+        else
+            exs[i] = :(strs[$(i)] = string(repeat("\t", tabs), $(Expr(:quote,
+                fields[i])), " = ", string($(objacc)), "\n"))
+        end
+    end
+    quote
+        import Base.string
+        $(esc(:string))(obj::$(typ)) = $(esc(:string))(obj, 0)
+        function $(esc(:string))(obj::$(typ), tabs::Int)
+            strs::Vector{String} = Array(String, length($(typ).types))
+            $(exs...)
+            "$(strs...)"
+        end
+    end
+end
 # TODO Summon the forces of metaprogramming to create a macro which will
 # generate a byte-based constructor for a given type.
 
@@ -401,6 +429,8 @@ give_length{T<:OfpStruct}(arr::Vector{T}) = sum(map(give_length, arr))
 # XXX Is his slow? Maybe it is faster to first obtain the required size, then
 # allocate the array, then writing the value, iterative style. 
 bytes{T<:OfpStruct}(arr::Vector{T}) = [map(bytes, arr)...]
+import Base.string
+string{T<:OfpStruct}(arr::Vector{T}, tabs=0) = "$(map((x)->(string(x, tabs)), arr)...)"
 immutable OfpHeader <: OfpStruct
     protoversion::Uint8
     msgtype::Uint8
@@ -414,9 +444,9 @@ OfpHeader(msgtype::Uint8, msglen::Uint16, msgidx::Uint32=0x00000000) = OfpHeader
 # object using the original type as argument ==> import the string function (is
 # it not imported implicitly already?) and provide external constructor methods
 # for it. ==> probably all "tostring" just need to be renamed to "string".
-function tostring(header::OfpHeader)
-    "<Version: $(header.protoversion), type: $(header.msgtype), length: $(header.msglen), idx: $(header.msgidx)>"
-end
+#function tostring(header::OfpHeader)
+#    "<Version: $(header.protoversion), type: $(header.msgtype), length: $(header.msglen), idx: $(header.msgidx)>"
+#end
 # XXX implement proper conversion functions
 #function bytes(header::OfpHeader)
 #    msg = zeros(Uint8, 8)
@@ -432,6 +462,7 @@ end
 #end
 @bytes OfpHeader
 @length OfpHeader
+@string OfpHeader
 function readofpheader(socket)
     protoversion = read(socket, Uint8, 1)[1]
     msgtype = read(socket, Uint8, 1)[1]
@@ -455,6 +486,7 @@ immutable OfpQueueGetConfigRequest <: OfpMessage
 end
 @length OfpQueueGetConfigRequest
 @bytes OfpQueueGetConfigRequest
+@string OfpQueueGetConfigRequest
 #give_length(::Type{OfpQueueGetConfigRequest}) =
 #    give_length(OfpHeader) + 4
 #function bytes(queueconfigreq::OfpQueueGetConfigRequest)
@@ -475,6 +507,7 @@ immutable OfpQueuePropHeader <: OfpStruct
 end
 @bytes OfpQueuePropHeader
 @length OfpQueuePropHeader
+@string OfpQueuePropHeader
 #function bytes(queuepropheader::OfpQueuePropHeader)
 #    byts::Bytes = zeros(Uint8, give_length(queuepropheader))
 #    byts[1:2] = bytes(queuepropheader.property)
@@ -493,6 +526,7 @@ immutable OfpQueuePropNone <: OfpQueueProp
 end
 @bytes OfpQueuePropNone
 @length OfpQueuePropNone
+@string OfpQueuePropNone
 immutable UnknownQueueProperty <: Exception
 end
 # XXX Why is it not allowed to create a constructor for the abstract type?
@@ -538,6 +572,7 @@ function OfpQueuePropMinRate(header::OfpQueuePropHeader, body::Bytes)
 end
 @length OfpQueuePropMinRate
 @bytes OfpQueuePropMinRate
+@string OfpQueuePropMinRate
 #give_length(queuepropminrate::OfpQueuePropMinRate) =
 #    queuepropminrate.header.len
 #function bytes(propminrate::OfpQueuePropMinRate)
@@ -568,6 +603,7 @@ immutable OfpPacketQueue <: OfpStruct
 end
 @length OfpPacketQueue
 @bytes OfpPacketQueue
+@string OfpPacketQueue
 
 #give_length(queue::OfpPacketQueue) = 8 + give_length(queue.properties)
 #function give_length(qs::Vector{OfpPacketQueue})
@@ -630,6 +666,7 @@ end
 OfpQueueGetConfigReply(header::OfpHeader, body::Bytes) = new(btoui(body[1:2]), OfpPacketQueues(body[9:end]), header)
 @bytes OfpQueueGetConfigReply
 @length OfpQueueGetConfigReply
+@string OfpQueueGetConfigReply
 #give_length(configreply::OfpQueueGetConfigReply) = give_length(OfpHeader) + 8 + give_length(configreply.queues)
 #function bytes(configreply::OfpQueueGetConfigReply)
 #    byts::Bytes = zeros(Uint8, give_length(configreply))
@@ -656,7 +693,9 @@ function OfpError(header::OfpHeader, body::Bytes)
 end
 @bytes OfpError
 @length OfpError
-function tostring(error::OfpError)
+@string OfpError
+import Base.string
+function string(error::OfpError)
     # XXX Solve this in a nicer way. Using reflection, or a dictionary or
     # anything, but hard coding.
     typestr = if error.typ == OFPET_HELLO_FAILED
@@ -695,7 +734,7 @@ function tostring(error::OfpError)
     else
         throw(UnrecognizedErrorCode(error))
     end
-    str::String = "<header: $(tostring(error.header)), type:
+    str::String = "<header: $(string(error.header)), type:
         $(typestr)($(error.typ)), code: $(codestr)($(error.code)), data:
         $(error.data)>"
     str
@@ -743,6 +782,7 @@ OfpPhyPort(bytes::Bytes) = begin
 end
 # give_length(port::Type{OfpPhyPort}) = 26 + OFP_MAX_ETH_ALEN + OFP_MAX_PORT_NAME_LEN
 @length OfpPhyPort
+@string OfpPhyPort
 @bytes OfpPhyPort
 # Switch features
 immutable OfpSwitchFeatures <: OfpMessage
@@ -775,6 +815,7 @@ OfpSwitchFeatures(header::OfpHeader, body::Bytes) = begin
 end
 @bytes OfpSwitchFeatures
 @length OfpSwitchFeatures
+@string OfpSwitchFeatures
 #give_length(features::OfpSwitchFeatures) = begin
 #    len = give_length(OfpHeader) + 16 
 #    for port in features.ports
@@ -782,9 +823,9 @@ end
 #    end
 #    len
 #end
-tostring(msg::OfpSwitchFeatures) = begin
-    str = "<header: $(tostring(msg.header)), datapath_id: $(msg.datapath_id), n_buffers: $(msg.n_buffers), n_tables: $(msg.n_tables), capabilities: $(msg.capabilities), actions: $(msg.actions), ports: $(msg.ports)>"
-end
+#string(msg::OfpSwitchFeatures) = begin
+#    str = "<header: $(tostring(msg.header)), datapath_id: $(msg.datapath_id), n_buffers: $(msg.n_buffers), n_tables: $(msg.n_tables), capabilities: $(msg.capabilities), actions: $(msg.actions), ports: $(msg.ports)>"
+#end
 # Switch configuration
 immutable OfpSwitchConfig <: OfpMessage
     header::OfpHeader
@@ -796,11 +837,12 @@ OfpSwitchConfig(header::OfpHeader, body::Bytes) =
                 OfpSwitchConfig(header, btoui(body[1:2]), btoui(body[3:4]))
 @bytes OfpSwitchConfig
 @length OfpSwitchConfig
+@string OfpSwitchConfig
 # XXX why does lead to an error that seems completely unrelated to the following line?
 #convert(::Type{ASCIIString}, msg::OfpSwitchConfig) = println("Someone just invoked the conversion")
-tostring(msg::OfpSwitchConfig) = begin
-    str = "<flags: $(msg.flags), miss_send_len: $(msg.miss_send_len)>"
-end
+#tostring(msg::OfpSwitchConfig) = begin
+#    str = "<flags: $(msg.flags), miss_send_len: $(msg.miss_send_len)>"
+#end
 #give_length(switchconig::Type{OfpSwitchConfig}) = give_length(OfpHeader) + 4
 # Flow match structures
 immutable OfpMatch <: OfpStruct
@@ -848,6 +890,7 @@ OfpMatch(body::Bytes) = OfpMatch(
 )
 @bytes OfpMatch
 @length OfpMatch
+@string OfpMatch
 #give_length(match::Type{OfpMatch}) = 2OFP_MAX_ETH_ALEN + 28
 #function bytes(match::OfpMatch)
 #    byts::Bytes = zeros(Uint8, give_length(OfpMatch))
@@ -959,6 +1002,7 @@ end
 OfpActionEmpty(body::Bytes) = OfpActionEmtpy(btoui(body[1:2], btoui(body[3:4])))
 @bytes OfpActionEmpty
 @length OfpActionEmpty
+@string OfpActionEmpty
 #function bytes(act::OfpActionEmpty)
 #    byts::Bytes = zeros(Uint8, 4)
 #    byts[1:2] = bytes(act.typ)
@@ -984,6 +1028,7 @@ function OfpActionOutput(body::Bytes)
 end
 @bytes OfpActionOutput
 @length OfpActionOutput
+@string OfpActionOutput
 #function subbytes(action::OfpActionOutput)
 #    byts::Bytes = zeros(Uint8, give_length(action) - 4)
 #    byts[1:2] = bytes(action.port)
@@ -1011,6 +1056,7 @@ function OfpActionEnqueue(body::Bytes)
 end
 @bytes OfpActionEnqueue
 @length OfpActionEnqueue
+@string OfpActionEnqueue
 #function subbytes(action::OfpActionEnqueue)
 #    byts::Bytes = zeros(Uint8, give_length(action) - 4)
 #    byts[1:2] = bytes(action.port)
@@ -1035,6 +1081,7 @@ function OfpActionVlanVid(body::Bytes)
 end
 @bytes OfpActionVlanVid
 @length OfpActionVlanVid
+@string OfpActionVlanVid
 #function subbytes(action::OfpActionVlanVid)
 #    byts::Bytes = zeros(Uint8, give_length(action) - 4)
 #    byts[1:2] = bytes(action.vlan_vid)
@@ -1058,6 +1105,7 @@ function OfpActionVlanPcp(body::Bytes)
 end
 @bytes OfpActionVlanPcp
 @length OfpActionVlanPcp
+@string OfpActionVlanPcp
 #function subbytes(action::OfpActionVlanPcp)
 #    byts::Bytes = zeros(Uint8, give_length(action) - 4)
 #    byts[1] = bytes(action.vlan_vid)
@@ -1097,6 +1145,7 @@ function OfpActionDlAddress(body::Bytes)
 end
 @bytes OfpActionDlAddress
 @length OfpActionDlAddress
+@string OfpActionDlAddress
 #function subbytes(action::OfpActionDlAddress)
 #    byts::Bytes = zeros(Uint8, give_length(action) - 4)
 #    byts[1:OFP_MAX_ETH_ALEN] = bytes(action.dl_addr)
@@ -1125,6 +1174,7 @@ function OfpActionNwAddress(body::Bytes)
 end
 @bytes OfpActionNwAddress
 @length OfpActionNwAddress
+@string OfpActionNwAddress
 #function subbytes(action::OfpActionNwAddress)
 #    byts::Bytes = zeros(Uint8, give_length(action) - 4)
 #    byts[1:4] = bytes(action.nw_addr)
@@ -1144,6 +1194,7 @@ immutable OfpActionNwTos <: OfpActionHeader
 end
 @bytes OfpActionNwTos
 @length OfpActionNwTos
+@string OfpActionNwTos
 #function subbytes(action::OfpActionNwTos)
 #    byts::Bytes = zeros(Uint8, give_length(action) - 4)
 #    byts[1] = action.nw_tos
@@ -1173,6 +1224,7 @@ function OfpActionTpPort(body::Bytes)
 end
 @bytes OfpActionTpPort
 @length OfpActionTpPort
+@string OfpActionTpPort
 #function subbytes(action::OfpActionTpPort)
 #    byts::Bytes = zeros(Uint8, give_length(action) - 4)
 #    byts[1:2] = bytes(action.tp_port)
@@ -1199,6 +1251,7 @@ function OfpActionVendor(body::Bytes)
 end
 @bytes OfpActionVendor
 @length OfpActionVendor
+@string OfpActionVendor
 #function subbytes(action::OfpActionVendor)
 #    byts::Bytes = zeros(Uint8, give_length(action) - 4)
 #    byts[1:4] = bytes(action.vendor)
@@ -1221,9 +1274,9 @@ immutable OfpPacketIn <: OfpMessage
     OfpPacketIn(header, buffer_id, total_len, in_port, reason, data) =
         new(header, buffer_id, total_len, in_port, reason, 0x00, data)
 end
-tostring(msg::OfpPacketIn) = "<header: $(tostring(msg.header)), buffer_id:
-    $(msg.buffer_id), total_len: $(msg.total_len), in_port: $(msg.in_port), reason:
-    $(msg.reason), data: $(msg.data)>"
+#tostring(msg::OfpPacketIn) = "<header: $(tostring(msg.header)), buffer_id:
+#    $(msg.buffer_id), total_len: $(msg.total_len), in_port: $(msg.in_port), reason:
+#    $(msg.reason), data: $(msg.data)>"
 OfpPacketIn(header::OfpHeader, body::Bytes) = begin
     datalen = length(body) - 10
     data = zeros(Uint8, datalen)
@@ -1234,6 +1287,7 @@ OfpPacketIn(header::OfpHeader, body::Bytes) = begin
 end
 @bytes OfpPacketIn
 @length OfpPacketIn
+@string OfpPacketIn
 # Port status messages
 immutable OfpPortStatus <: OfpMessage
     header::OfpHeader
@@ -1246,6 +1300,7 @@ end
 OfpPortStatus(header::OfpHeader, body::Bytes) = OfpPortStatus(header, body[1], OfpPhyPort(body[17:64]))
 @bytes OfpPortStatus
 @length OfpPortStatus
+@string OfpPortStatus
 #give_length(portstatus::Type{OfpPortStatus}) = give_length(OfpHeader) + 8 +
 #    give_length(OfpPhyPort)
 # Modify StateMessages
@@ -1293,6 +1348,7 @@ type OfpFlowMod <: OfpMessage
 end
 @bytes OfpFlowMod
 @length OfpFlowMod
+@string OfpFlowMod
 #give_length(flowmod::OfpFlowMod) = give_length(OfpHeader) + give_length(OfpMatch) + 24 + give_length(flowmod.actions)
 # XXX Just as reading the length it should be possible to serialize messages
 # seamlessly and automaically using the fields. Some metaprogramming maybe?
@@ -1331,6 +1387,7 @@ immutable OfpPortMod <: OfpMessage
 end
 @bytes OfpPortMod
 @length OfpPortMod
+@string OfpPortMod
 #give_length(portmod::OfpPortMod) = give_length(portmod.header) + 16 +
 #    OFP_MAX_ETH_ALEN
 #function bytes(portmod::OfpPortMod)
@@ -1349,6 +1406,7 @@ immutable OfpEmptyMessage <: OfpMessage
 end
 @bytes OfpEmptyMessage
 @length OfpEmptyMessage
+@string OfpEmptyMessage
 #give_length(empty::Type{OfpEmptyMessage}) = give_length(OfpHeader)
 
 type UnrecognizedMessageError <: Exception
@@ -1374,6 +1432,7 @@ immutable OfpDescStats <: OfpStatsReplyBody
 end
 @bytes OfpDescStats
 @length OfpDescStats
+@string OfpDescStats
 function OfpDescStats(body::Bytes)
     mfr_desc::ASCIIString = ASCIIString(body[1:DESC_STR_LEN])
     hw_desc::ASCIIString = ASCIIString(body[DESC_STR + 1:2DESC_STR_LEN])
@@ -1398,6 +1457,7 @@ immutable OfpFlowStatsRequest <: OfpStatsRequestBody
 end
 @bytes OfpFlowStatsRequest
 @length OfpFlowStatsRequest
+@string OfpFlowStatsRequest
 #function bytes(statsreq::OfpFlowStatsRequest)
 #    byts::Bytes = zeros(Uint8, give_length(statsreq))
 #    byts[1:40] = bytes(statsreq.match)
@@ -1431,6 +1491,7 @@ immutable OfpFlowStats <: OfpStatsReplyBody
 end
 @bytes OfpFlowStats
 @length OfpFlowStats
+@string OfpFlowStats
 #give_length(flowstats::OfpFlowStats) = 48 + give_length(OfpMatch) + give_length(flowstats.actions)
 function OfpFlowStats(body::Bytes)
     length::Uint16 = btoi(body[1:2])
@@ -1460,6 +1521,7 @@ immutable OfpAggregateStatsRequest <: OfpStatsRequestBody
 end
 @bytes OfpAggregateStatsRequest
 @length OfpAggregateStatsRequest
+@string OfpAggregateStatsRequest
 #give_length(::Type{OfpAggregateStatsRequest}) = give_length(OfpMatch) + 4
 #function bytes(req::OfpAggregateStatsRequest)
 #    byts::Bytes = zeros(Uint8, give_length(OfpAggregateStatsRequest))
@@ -1480,6 +1542,7 @@ immutable OfpAggregateStatsReply <: OfpStatsReplyBody
 end
 @bytes OfpAggregateStatsReply
 @length OfpAggregateStatsReply
+@string OfpAggregateStatsReply
 #give_length(::Type{OfpAggregateStatsReply}) = 24
 function OfpAggregateStatsReply(body::Bytes)
    packet_count::Uint64 = btoui(body[1:8])
@@ -1506,6 +1569,7 @@ immutable OfpTableStats <: OfpStatsReplyBody
 end
 @bytes OfpTableStats
 @length OfpTableStats
+@string OfpTableStats
 #give_length(::Type{OfpTableStats}) = 32 + OFP_MAX_TABLE_NAME_LEN
 function OfpTableStats(body::Bytes)
     table_id::Uint8 = btoui(body[1:2])
@@ -1534,6 +1598,7 @@ immutable OfpPortStatsRequest <: OfpStatsRequestBody
 end
 @bytes OfpPortStatsRequest
 @length OfpPortStatsRequest
+@string OfpPortStatsRequest
 #give_length(::Type{OfpPortStatsRequest}) = 8
 OfpPortStatsRequest(body::Bytes) = OfpPortStatsRequest(btoui(body[1:2]))
 #function bytes(req::OfpPortStatsRequest)
@@ -1571,6 +1636,7 @@ immutable OfpPortStats <: OfpStatsReplyBody
 end
 @bytes OfpPortStats
 @length OfpPortStats
+@string OfpPortStats
 
 immutable OfpQueueStatsRequest <: OfpStatsRequestBody
     # TODO OFPT_ALL and OFPQ_ALL are nowhere defined yet.
@@ -1582,6 +1648,7 @@ immutable OfpQueueStatsRequest <: OfpStatsRequestBody
 end
 @bytes OfpQueueStatsRequest
 @length OfpQueueStatsRequest
+@string OfpQueueStatsRequest
 
 immutable OfpQueueStats <: OfpStatsReplyBody
     port_no::Uint16
@@ -1595,6 +1662,7 @@ immutable OfpQueueStats <: OfpStatsReplyBody
 end
 @bytes OfpQueueStats
 @length OfpQueueStats
+@string OfpQueueStats
 
 immutable OfpVendorStatsRequest <: OfpStatsRequestBody
     vendor_id::Bytes # Length: 4
@@ -1602,6 +1670,7 @@ immutable OfpVendorStatsRequest <: OfpStatsRequestBody
 end
 @bytes OfpVendorStatsRequest
 @length OfpVendorStatsRequest
+@string OfpVendorStatsRequest
 
 immutable OfpVendorStatsReply <: OfpStatsReplyBody
     vendor_id::Bytes # Length: 4
@@ -1609,6 +1678,7 @@ immutable OfpVendorStatsReply <: OfpStatsReplyBody
 end
 @bytes OfpVendorStatsReply
 @length OfpVendorStatsReply
+@string OfpVendorStatsReply
 
 # ofp_stats_request
 immutable OfpStatsRequest{T<:OfpStatsRequestBody} <: OfpMessage
@@ -1619,6 +1689,7 @@ immutable OfpStatsRequest{T<:OfpStatsRequestBody} <: OfpMessage
 end
 @bytes OfpStatsRequest
 @length OfpStatsRequest
+@string OfpStatsRequest
 
 # ofp_stats_reply
 immutable OfpStatsReply{T<:OfpStatsReplyBody} <: OfpMessage
@@ -1629,6 +1700,7 @@ immutable OfpStatsReply{T<:OfpStatsReplyBody} <: OfpMessage
 end
 @bytes OfpStatsReply
 @length OfpStatsReply
+@string OfpStatsReply
 
 # ofp_packet_out
 # Send packet (controller -> datapath).
@@ -1642,6 +1714,7 @@ immutable OfpPacketOut <: OfpMessage
 end
 @bytes OfpPacketOut
 @length OfpPacketOut
+@string OfpPacketOut
 
 # Flow removed (datapath -> controller).
 # ofp_flow_removed
@@ -1666,6 +1739,7 @@ immutable OfpFlowRemoved <: OfpMessage
 end
 @bytes OfpFlowRemoved
 @length OfpFlowRemoved
+@string OfpFlowRemoved
 
 # Vendor extension.
 # ofp_vendor_header
@@ -1678,6 +1752,7 @@ immutable OfpVendorHeader <: OfpMessage
 end
 @bytes OfpVendorHeader
 @length OfpVendorHeader
+@string OfpVendorHeader
 
 function processrequest(message::OfpMessage, socket::TcpSocket)
     try
@@ -1691,19 +1766,19 @@ function processrequest(message::OfpMessage, socket::TcpSocket)
             write(socket, bytes(OfpHeader(OFPT_GET_CONFIG_REQUEST, 0x0008)))
         elseif message.header.msgtype == OFPT_FEATURES_REPLY
             # TODO convert the body to a proper body type and output the contents
-            info("Got FEATURES_REPLY: $(tostring(message))")
+            info("Got FEATURES_REPLY: $(string(message))")
         elseif message.header.msgtype == OFPT_ECHO_REQUEST
             info("Got ECHO_REQUEST, replying ECHO_REPLY")
             write(socket, bytes(OfpHeader(OFPT_ECHO_REPLY, 0x0008)))
         elseif message.header.msgtype == OFPT_GET_CONFIG_REPLY
-            info("Got GET_CONFIG_REPLY: $(tostring(message))")
+            info("Got GET_CONFIG_REPLY: $(string(message))")
         elseif message.header.msgtype == OFPT_PACKET_IN
-            info("Got PACKET_IN: $(tostring(message))")
+            info("Got PACKET_IN: $(string(message))")
             # Assuming we just got the ARP request from host 1
             # TODO send a message to forward broadcasts
             write(socket, bytes(create_arp_request_flowmod(message.buffer_id)))
         elseif message.header.msgtype == OFPT_ERROR
-            warn("Got ERROR: $(tostring(message))")
+            warn("Got ERROR: $(string(message))")
         end
     catch e
         Base.error_show(STDERR, e, catch_backtrace())
@@ -1811,6 +1886,6 @@ function sendhello()
 end
 
 # XXX DEBUG
-#start_server()
+start_server()
 end
 

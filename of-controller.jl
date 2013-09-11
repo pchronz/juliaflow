@@ -6,9 +6,9 @@ module OpenFlow
 # TODO For all types provide bytes, both constructors (fields and bytes),
 # string. Use constructors and bytes in unit tests.
 # TODO API
+# TODO Tests
 # TODO Minimum constructors. Create all which is implicit automatically in an
 # inner constructor.
-# TODO Tests
 # TODO License
 # TODO TLS
 # TODO consider taking all the types and generating all written macros directly,
@@ -420,8 +420,61 @@ macro string(typ)
         end
     end
 end
-# TODO Summon the forces of metaprogramming to create a macro which will
-# generate a byte-based constructor for a given type.
+# Create a byte-based constructor for the given type.
+# TODO make sure that all inner constructors take the header if they store it.
+# TODO constructing byte arrays with a given length.
+# TODO constructing arrays of OfpStruct types.
+macro bytesconstructor(t)
+    typ::Type = eval(t)
+    fields::Vector{Symbol} = names(typ)
+    typs::Tuple = typ.types
+    # Expanding the array dynamically since we need to filter out the padding.
+    # The penalty should be quite low, since there are rather few fields in each
+    # type, and the construction macro is going to be called just once per type.
+    exs::Vector{Expr} = Expr[]
+    hasheader::Bool = false
+    for i = 1:length(fields)
+        # Padding fields are set by the constructors. We do not have any access
+        # to those fields from here.
+        # The OfpHeader needs to be created by the inner constructor implicitly.
+        len::Integer
+        ex::Expr
+        if ismatch(r"^pad.*", string(fields[i]))
+            continue
+        elseif typs[i] <: Number
+            len = sizeof(typs[i])
+            ex = quote
+                fieldvals = [fieldvals..., btoui(bytes[pos:pos + $(len) - 1])]
+                pos += $(len)
+            end
+        elseif typs[i] == OfpHeader
+            hasheader = true
+            ex = :(fieldvals = [fieldvals..., header])
+        elseif typs[i] <: OfpStruct
+            len = length(typs[i])
+            ex = quote
+                fieldvals = [fieldvals..., $(t)(bytes[pos:pos + $(len) - 1])]
+                pos += $(len)
+            end
+        elseif typs[i] <: Array
+            # TODO for both byte arrays and arrays of OfpStruct.
+        end
+        exs = [exs..., ex]
+    end
+    args::Vector{Expr} = hasheader ? [:(header::OfpHeader), :(bytes::Bytes)] :
+        [:(bytes::Bytes)]
+    foo = quote
+        function $(esc(t))($(args...))
+            # Values of the fields to be passed in to the inner constructor
+            fieldvals::Vector{Any} = []
+            pos = 1
+            $(exs...)
+            $(t)(fieldvals...)
+        end
+    end
+    @show foo
+    foo
+end
 
 abstract OfpStruct
 # TODO go through all iterative computations and try to apply map instead.
@@ -487,6 +540,7 @@ end
 @length OfpQueueGetConfigRequest
 @bytes OfpQueueGetConfigRequest
 @string OfpQueueGetConfigRequest
+@bytesconstructor OfpQueueGetConfigRequest
 #give_length(::Type{OfpQueueGetConfigRequest}) =
 #    give_length(OfpHeader) + 4
 #function bytes(queueconfigreq::OfpQueueGetConfigRequest)
@@ -832,12 +886,18 @@ immutable OfpSwitchConfig <: OfpMessage
     flags::Uint16 # OFPC_* flags.
     miss_send_len::Uint16 # Max bytes of new flow that datapath should send to
                             # the controller
+    OfpSwitchConfig(header, flags, miss_send_len) = begin 
+        @assert header.msgtype == OFPT_GET_CONFIG_REQUEST || header.msgtype ==
+            OFPT_GET_CONFIG_REPLY
+        new(header, flags, miss_send_len)
+    end
 end
-OfpSwitchConfig(header::OfpHeader, body::Bytes) =
-                OfpSwitchConfig(header, btoui(body[1:2]), btoui(body[3:4]))
+#OfpSwitchConfig(header::OfpHeader, body::Bytes) =
+#                OfpSwitchConfig(header, btoui(body[1:2]), btoui(body[3:4]))
 @bytes OfpSwitchConfig
 @length OfpSwitchConfig
 @string OfpSwitchConfig
+@bytesconstructor OfpSwitchConfig
 # XXX why does lead to an error that seems completely unrelated to the following line?
 #convert(::Type{ASCIIString}, msg::OfpSwitchConfig) = println("Someone just invoked the conversion")
 #tostring(msg::OfpSwitchConfig) = begin

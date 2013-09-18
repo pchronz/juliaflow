@@ -1,4 +1,6 @@
 export 
+    # Typealiases
+    Bytes,
     
     # Types
     OfpStruct,

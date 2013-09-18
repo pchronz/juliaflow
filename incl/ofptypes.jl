@@ -5,6 +5,7 @@ give_length{T<:OfpStruct}(arr::Vector{T}) = sum(map(give_length, arr))
 bytes{T<:OfpStruct}(arr::Vector{T}) = [map(bytes, arr)...]
 import Base.string
 string{T<:OfpStruct}(arr::Vector{T}, tabs=0) = "$(map((x)->(string(x, tabs)), arr)...)"
+
 # XXX Is there any chance we could make the header immutable again?
 type OfpHeader <: OfpStruct
     protoversion::Uint8
@@ -14,21 +15,6 @@ type OfpHeader <: OfpStruct
 end
 OfpHeader(msgtype::Uint8, msglen::Uint16, msgidx::Uint32=0x00000000) = OfpHeader(0x01,
     msgtype, msglen, msgidx)
-#function tostring(header::OfpHeader)
-#    "<Version: $(header.protoversion), type: $(header.msgtype), length: $(header.msglen), idx: $(header.msgidx)>"
-#end
-#function bytes(header::OfpHeader)
-#    msg = zeros(Uint8, 8)
-#    msg[1] = header.protoversion
-#    msg[2] = header.msgtype
-#    msg[3] = uint8(header.msglen>>8)
-#    msg[4] = uint8(header.msglen)
-#    msg[5] = uint8(header.msgidx>>24)
-#    msg[6] = uint8(header.msgidx>>16)
-#    msg[7] = uint8(header.msgidx>>8)
-#    msg[8] = uint8(header.msgidx)
-#    msg
-#end
 @bytes OfpHeader
 @length OfpHeader
 @string OfpHeader
@@ -39,9 +25,9 @@ function readofpheader(socket)
     msgidx = ntoh(read(socket, Uint32, 1)[1])
     OfpHeader(protoversion, msgtype, msglen, msgidx)
 end
-#give_length(header::Type{OfpHeader}) = 8
 
 abstract OfpMessage <: OfpStruct
+
 # Query for port configuration.
 # ofp_queue_get_config_request
 immutable OfpQueueGetConfigRequest <: OfpMessage
@@ -59,17 +45,11 @@ end
 @bytes OfpQueueGetConfigRequest
 @string OfpQueueGetConfigRequest
 @bytesconstructor OfpQueueGetConfigRequest [:pad=>2]
-#give_length(::Type{OfpQueueGetConfigRequest}) =
-#    give_length(OfpHeader) + 4
-#function bytes(queueconfigreq::OfpQueueGetConfigRequest)
-#    byts::Bytes = zeros(Uint8, give_length(OfpQueueGetConfigRequest))
-#    byts[1:8] = queueconfigreq.header
-#    byts[9:10] = queueconfigreq.port
-#    byts
-#end
+
 # Creating a new type to bundle all OfpQueueProperties.
 abstract OfpQueueProp <: OfpStruct
 # Common description for a queue.
+
 immutable OfpQueuePropHeader <: OfpStruct
     property::Uint16 # One of OFPQT_*.
     len::Uint16 # Length of property, including this header.
@@ -81,14 +61,7 @@ end
 @length OfpQueuePropHeader
 @string OfpQueuePropHeader
 @bytesconstructor OfpQueuePropHeader [:pad=>4]
-#function bytes(queuepropheader::OfpQueuePropHeader)
-#    byts::Bytes = zeros(Uint8, give_length(queuepropheader))
-#    byts[1:2] = bytes(queuepropheader.property)
-#    byts[3:4] = bytes(queuepropheader.len)
-#    byts
-#end
-#OfpQueuePropHeader(body::Bytes) = OfpQueuePropHeader(btoui(body[1:2]), btoui(body[3:4]))
-#give_length(queuepropheader::OfpQueuePropHeader) = 8
+
 immutable OfpQueuePropNone <: OfpQueueProp
     header::OfpQueuePropHeader
     function OfpQueuePropNone(header::OfpQueuePropHeader) 
@@ -101,6 +74,7 @@ end
 @length OfpQueuePropNone
 @string OfpQueuePropNone
 @bytesconstructor OfpQueuePropNone
+
 immutable UnknownQueueProperty <: Exception
 end
 
@@ -109,56 +83,44 @@ function OfpQueuePropFactory(body::Bytes)
     header::OfpQueuePropHeader = OfpQueuePropHeader(body[1:8])
     if header.property == OFPQT_MIN_RATE
         @assert length(body) == header.len
-        return OfpQueuePropMinRate(header, body[9:end])
-    elseif header.propert == OFPQT_NONE
+        return OfpQueuePropMinRate(body)
+    elseif header.property == OFPQT_NONE
         @assert length(body) == 8
-        return OfpQueuePropNone(header)
+        return OfpQueuePropNone(body)
     else
         throw(UnknownQueueProperty())
     end
 end
 function nextqueueprop(body::Bytes)
     header::OfpQueuePropHeader = OfpQueuePropHeader(body[1:8])
-    (OfpQueuePropFactory(body[1:8 + header.len]), length(body) > 8 + header.len ?
-        body[8 + header.len + 1:end] : nothing)
+    (OfpQueuePropFactory(body[1:header.len]), length(body) > header.len ?
+        body[header.len + 1:end] : nothing)
 end
 function OfpQueueProps(body::Bytes)
-    props = Array(OfpQueueProp, 1)
+    props = Array(OfpQueueProp, 0)
     bdy = body
     while bdy != nothing
         (prop::OfpQueueProp, bdy) = nextqueueprop(bdy)
-        append(props, [prop])
+        append!(props, [prop])
     end
     props
 end
+
 # Min-Rate queue property description. 
 immutable OfpQueuePropMinRate <: OfpQueueProp
     header::OfpQueuePropHeader # prop: OFPQT_MIN_RATE, len: 16.
     rate::Uint16 # In 1/10 of a percent; >1000 -> disabled.
     pad::Bytes # Length 6; 64-bit alginment.
     OfpQueuePropMinRate(header, rate::Uint16) = begin
-        @assert header.msgtype == OFPQT_MIN_RATE
+        @assert header.property == OFPQT_MIN_RATE
         new(header, rate, zeros(Uint8, 6))
     end
 end
-#function OfpQueuePropMinRate(header::OfpQueuePropHeader, body::Bytes)
-#    @assert header.property == OFPQT_MIN_RATE
-#    @assert header.len == 16
-#    OfpQueuePropMinRate(btoui(body))
-#end
 @length OfpQueuePropMinRate
 @bytes OfpQueuePropMinRate
 @string OfpQueuePropMinRate
 @bytesconstructor OfpQueuePropMinRate [:pad=>6]
-#give_length(queuepropminrate::OfpQueuePropMinRate) =
-#    queuepropminrate.header.len
-#function bytes(propminrate::OfpQueuePropMinRate)
-#    byts::Bytes = zeros(Uint8, give_length(propminrate))
-#    byts[1:8] = bytes(propminrate.header)
-#    byts[9:10] = bytes(rate)
-#    byts
-#end
-# Full description for a queue.
+
 # TODO Consider making these kinds of types generic by parameterizing with
 # abstract types used in collections as fields. In this type this would amount
 # to parameterizing for OfpQueueProp. Probably parameterizing the whole type
@@ -175,58 +137,21 @@ immutable OfpPacketQueue <: OfpStruct
         # OfpQueuePropHeader as type of properties. Probably however the list is
         # not supposed to only contain the headers but also the full properties. 
     OfpPacketQueue(queue_id::Uint32, len::Uint16,
-        properties::Vector{OfpQueueProp}) = new(queue_id, len, zeros(Uint8, 2),
-        properties)
+        properties::Vector{OfpQueueProp}) = begin
+            obj = new(queue_id, len, zeros(Uint8, 2), properties)
+            @assert len == give_length(obj)
+            obj
+    end
 end
 @length OfpPacketQueue
 @bytes OfpPacketQueue
 @string OfpPacketQueue
-#give_length(queue::OfpPacketQueue) = 8 + give_length(queue.properties)
-#function give_length(qs::Vector{OfpPacketQueue})
-#    len = 0
-#    for q in queues
-#        len += give_length(q)
-#    end
-#    len
-#end
-#function bytes(queue::OfpPacketQueue)
-#    byts::Bytes = zeros(Uint8, give_length(queue))
-#    byts[1:4] = bytes(queue.queue_id)
-#    byts[5:6] = bytes(queue.len)
-#    byts[9:end] = bytes(queue.properties)
-#    byts
-#end
-#function bytes(qs::Vector{OfpPacketQueue})
-#    byts::Bytes = zeros(Uint8, give_length(qs))
-#    pos = 1
-#    for q in qs
-#        bs = bytes(q)
-#        len = length(bs)
-#        byts[pos:pos+len-1] = bs
-#        pos += len
-#    end
-#    byts
-#end
 function OfpPacketQueue(body::Bytes)
-    OfpPacketQueue(btoui(body[1:4], btoui(body[5:6]),
-        OfpQueueProps(body[9:end])))
+    queue_id = btoui(body[1:4])
+    len = btoui(body[5:6])
+    OfpPacketQueue(queue_id, len, OfpQueueProps(body[9:len]))
 end
-function nextpacketqueue(body::Bytes)
-    qlen = btoui(body[5:6])
-    (OfpPacketQueue(body[1:qlen]), length(body) > qlen ?
-        body[qlen + 1:end] : nothing)
-end
-#function OfpPacketQueues(body::Bytes)
-#    pqs = Array(OfpPacketQueue, 1)
-#    bdy = body
-#    while bdy != nothing
-#        (pq::OfpPacketQueue, bdy) = nextpacketqueue(bdy)
-#        append(pqs, [pq])
-#    end
-#    pqs
-#end
-# Queue configuration for a given port.
-# ofp_queue_get_config_reply
+
 immutable OfpQueueGetConfigReply <: OfpMessage
     header::OfpHeader
     port::Uint16 
@@ -244,23 +169,15 @@ immutable OfpQueueGetConfigReply <: OfpMessage
         configreply = new(header, port, zeros(Uint8, 6), queues)
         len = give_length(configreply)
         @assert header.msglen == len
-        @assert header.msgtype == OFPT_GET_CONFIG_REPLY
+        @assert header.msgtype == OFPT_QUEUE_GET_CONFIG_REPLY
         configreply
     end
 end
-#OfpQueueGetConfigReply(header::OfpHeader, body::Bytes) = new(btoui(body[1:2]), OfpPacketQueues(body[9:end]), header)
 @bytes OfpQueueGetConfigReply
 @length OfpQueueGetConfigReply
 @string OfpQueueGetConfigReply
 @bytesconstructor OfpQueueGetConfigReply [:pad=>6]
-#give_length(configreply::OfpQueueGetConfigReply) = give_length(OfpHeader) + 8 + give_length(configreply.queues)
-#function bytes(configreply::OfpQueueGetConfigReply)
-#    byts::Bytes = zeros(Uint8, give_length(configreply))
-#    byts[1:8] = bytes(configreply.header)
-#    byts[9:10] = bytes(configreply.port)
-#    byts[17:end] = bytes(configreply.queues)
-#    byts
-#end
+
 immutable OfpError <: OfpMessage
     header::OfpHeader
     typ::Uint16 # Should be "type", which however is a keyword in Julia.
@@ -273,16 +190,9 @@ immutable OfpError <: OfpMessage
         @assert header.msgtype == OFPT_ERROR
         obj = new(header, typ, code, data)
         @assert header.msglen == give_length(obj)
-        obs
+        obj
     end
 end
-#function OfpError(header::OfpHeader, body::Bytes)
-#    OfpError(header, # header.
-#        btoui(body[1:2]), # (e)type.
-#        btoui(body[3:4]), # code.
-#        body[5:end] # data.
-#    )
-#end
 @bytes OfpError
 @length OfpError
 @string OfpError
@@ -344,7 +254,7 @@ immutable OfpPhyPort <: OfpStruct
     hw_addr::Bytes # length of array: OFP_MAX_ETH_ALEN
     name::Bytes # Null-terminated. Length: OFP_MAX_PORT_NAME_LEN.
     config::Uint32 # Bitmap of OFPC_* flags.
-    state::Uint32 # Bitmap of OFPS_* flas.
+    state::Uint32 # Bitmap of OFPPS_* flags.
     # Bitmaps of OFPPF_* that describe features. All bits zeroed if unsupported
     # or unavailable.
     curr::Uint32 # Current features.
@@ -363,28 +273,7 @@ end
 @string OfpPhyPort [:name]
 @bytes OfpPhyPort
 @bytesconstructor OfpPhyPort [:hw_addr=>OFP_MAX_ETH_ALEN, :name=>OFP_MAX_PORT_NAME_LEN]
-#OfpPhyPort(bytes::Bytes) = begin
-#    # XXX make this more legible somehow?
-#    port_no = btoui(bytes[1:2])
-#    hw_addr = bytes[3:3+OFP_MAX_ETH_ALEN-1]
-#    name = bytes[3+OFP_MAX_ETH_ALEN:3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN-1]
-#    config = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN:
-#                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 4 - 1])
-#    state = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 4:
-#                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 8 - 1])
-#    curr = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 8:
-#                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 12 - 1])
-#    advertised = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 12:
-#                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 16 - 1])
-#    supported = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 16:
-#                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 20 - 1])
-#    peer = btoui(bytes[3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 20:
-#                            3+OFP_MAX_ETH_ALEN+OFP_MAX_PORT_NAME_LEN + 24 - 1])
-#    OfpPhyPort(port_no, hw_addr, name, config, state, curr, advertised,
-#                supported, peer)
-#end
-# give_length(port::Type{OfpPhyPort}) = 26 + OFP_MAX_ETH_ALEN + OFP_MAX_PORT_NAME_LEN
-# Switch features
+
 immutable OfpSwitchFeatures <: OfpMessage
     header::OfpHeader
     datapath_id::Uint64 # Datapath unique ID. The lower 48-bits are for a MAC
@@ -404,32 +293,11 @@ immutable OfpSwitchFeatures <: OfpMessage
         obj
     end
 end
-#OfpSwitchFeatures(header::OfpHeader, body::Bytes) = begin
-#    # XXX write the array of ports should be created by its own function that
-#    # takes the corresponding octects
-#    # compute the number of ports
-#    numports = uint16((header.msglen - 8 - 24)/48) # len(OfpPhyPort) == 48
-#    ports::Vector{OfpPhyPort} = Array(OfpPhyPort, numports)
-#    for p = 1:numports
-#        ports[p] = OfpPhyPort(body[25 + (p - 1)*48:25 + p*48 - 1])
-#    end
-#    OfpSwitchFeatures(header, btoui(body[1:8]), btoui(body[9:12]), body[13],
-#                btoui(body[17:20]), btoui(body[21:24]), ports)
-#end
 @bytes OfpSwitchFeatures
 @length OfpSwitchFeatures
 @string OfpSwitchFeatures
 @bytesconstructor OfpSwitchFeatures [:pad=>3]
-#give_length(features::OfpSwitchFeatures) = begin
-#    len = give_length(OfpHeader) + 16 
-#    for port in features.ports
-#        len += give_length(OfpPhyPort)
-#    end
-#    len
-#end
-#string(msg::OfpSwitchFeatures) = begin
-#    str = "<header: $(tostring(msg.header)), datapath_id: $(msg.datapath_id), n_buffers: $(msg.n_buffers), n_tables: $(msg.n_tables), capabilities: $(msg.capabilities), actions: $(msg.actions), ports: $(msg.ports)>"
-#end
+
 # Switch configuration
 immutable OfpSwitchConfig <: OfpMessage
     header::OfpHeader
@@ -448,12 +316,7 @@ end
 @length OfpSwitchConfig
 @string OfpSwitchConfig
 @bytesconstructor OfpSwitchConfig
-# XXX why does lead to an error that seems completely unrelated to the following line?
-#convert(::Type{ASCIIString}, msg::OfpSwitchConfig) = println("Someone just invoked the conversion")
-#tostring(msg::OfpSwitchConfig) = begin
-#    str = "<flags: $(msg.flags), miss_send_len: $(msg.miss_send_len)>"
-#end
-#give_length(switchconig::Type{OfpSwitchConfig}) = give_length(OfpHeader) + 4
+
 # Flow match structures
 immutable OfpMatch <: OfpStruct
     wildcards::Uint32 # Wildcards fields
@@ -484,51 +347,11 @@ immutable OfpMatch <: OfpStruct
             tp_dst)
     end
 end
-#OfpMatch(body::Bytes) = OfpMatch(
-#    btoui(body[1:4]), # wildcards
-#    btoui(body[5:6]), # in_port
-#    # XXX the spec (1.0.0) says it should be OFP_MAX_ETH_ALEN, but never defines
-#    # it. The text actually refers to OFP_MAX_ETH_ALEN, so I am replacing the
-#    # constant in the followin accordingly.
-#    body[7:7 + OFP_MAX_ETH_ALEN - 1], # dl_src
-#    body[7 + OFP_MAX_ETH_ALEN : 7 + 2OFP_MAX_ETH_ALEN - 1], # dl_dst
-#    btoui(body[7 + 2OFP_MAX_ETH_ALEN:7 + 2OFP_MAX_ETH_ALEN + 1]), # dl_vlan
-#    body[7 + 2OFP_MAX_ETH_ALEN + 2], # dl_vlan_pcp
-#    btoui(body[7 + 2OFP_MAX_ETH_ALEN + 4:7 + 2OFP_MAX_ETH_ALEN + 5]), # dl_type
-#    body[7 + 2OFP_MAX_ETH_ALEN + 6], # nw_tos
-#    body[7 + 2OFP_MAX_ETH_ALEN + 7], # nw_proto
-#    btoui(body[7 + 2OFP_MAX_ETH_ALEN + 10:7 + 2OFP_MAX_ETH_ALEN + 13]), # nw_src
-#    btoui(body[7 + 2OFP_MAX_ETH_ALEN + 14:7 + 2OFP_MAX_ETH_ALEN + 17]), # nw_dst
-#    btoui(body[7 + 2OFP_MAX_ETH_ALEN + 18:7 + 2OFP_MAX_ETH_ALEN + 19]), # tp_src
-#    btoui(body[7 + 2OFP_MAX_ETH_ALEN + 20:7 + 2OFP_MAX_ETH_ALEN + 21]) # tp_dst
-#)
 @bytes OfpMatch
 @length OfpMatch
 @string OfpMatch
 @bytesconstructor OfpMatch [:pad2=>2, :dl_src=>OFP_MAX_ETH_ALEN, :dl_dst=>OFP_MAX_ETH_ALEN]
-#give_length(match::Type{OfpMatch}) = 2OFP_MAX_ETH_ALEN + 28
-#function bytes(match::OfpMatch)
-#    byts::Bytes = zeros(Uint8, give_length(OfpMatch))
-#    byts[1:4] = bytes(match.wildcards)
-#    byts[5:6] = bytes(match.in_port)
-#    byts[7:7 + OFP_MAX_ETH_ALEN - 1] = match.dl_src
-#    byts[7 + OFP_MAX_ETH_ALEN : 7 + 2OFP_MAX_ETH_ALEN - 1] = match.dl_dst
-#    byts[7 + 2OFP_MAX_ETH_ALEN:7 + 2OFP_MAX_ETH_ALEN + 1] = bytes(match.dl_vlan)
-#    byts[7 + 2OFP_MAX_ETH_ALEN + 2] = bytes(match.dl_vlan_pcp)
-#    byts[7 + 2OFP_MAX_ETH_ALEN + 3:7 + 2OFP_MAX_ETH_ALEN + 4] =
-#        bytes(match.dl_type)
-#    byts[7 + 2OFP_MAX_ETH_ALEN + 5] = match.nw_tos
-#    byts[7 + 2OFP_MAX_ETH_ALEN + 6] = match.nw_proto
-#    byts[7 + 2OFP_MAX_ETH_ALEN + 7:7 + 2OFP_MAX_ETH_ALEN + 10] =
-#        bytes(match.nw_src)
-#    byts[7 + 2OFP_MAX_ETH_ALEN + 11:7 + 2OFP_MAX_ETH_ALEN + 14] =
-#        bytes(match.nw_dst)
-#    byts[7 + 2OFP_MAX_ETH_ALEN + 15:7 + 2OFP_MAX_ETH_ALEN + 16] =
-#        bytes(match.tp_src)
-#    byts[7 + 2OFP_MAX_ETH_ALEN + 17:7 + 2OFP_MAX_ETH_ALEN + 18] =
-#        bytes(match.tp_dst)
-#    byts
-#end
+
 # XXX Using the naming from the spec. It is not really a header but rather
 # something of a supertype for all actions. OfpAction would be a more suitable
 # name.
@@ -536,40 +359,6 @@ abstract OfpActionHeader <: OfpStruct
 # TODO Probably it would be best to add methods to Base.length for all the
     # special types. => rename all give_length methods to be methods of
     # Base.length or whichever the standard length function is.
-#give_length(action::OfpActionHeader) = action.len 
-#function bytes(action::OfpActionHeader)
-#    byts::Bytes = zeros(Uint8, give_length(action))
-#    byts[1:2] = bytes(action.typ)
-#    byts[3:4] = bytes(action.len)
-#    # subbytes start after the length field
-#    byts[5:end] = subbytes(action)
-#    byts
-#end
-#function bytes(actions::Vector{OfpActionHeader})
-#    blen = 0
-#    # TODO Use map and summaton.
-#    for a in actions
-#        blen += give_length(a)
-#    end
-#    byts::Bytes = zeros(Uint8, blen)
-#    # TODO Functional style?
-#    pos = 1
-#    for a in actions
-#        abyts = bytes(a)
-#        alen = length(abyts)
-#        byts[pos:pos + alen - 1] = abyts
-#        pos += alen
-#    end
-#    byts
-#end
-#function give_length(actions::Vector{OfpActionHeader})
-#    len = 0
-#    # XXX This could be done more elegantly by combingin map and sum.
-#    for a in actions
-#        len += give_length(a)
-#    end
-#    len
-#end
 function OfpActionHeaderFactory(body::Bytes)
     typ::Uint16 = btoui(body[1:2])
     if typ == OFPAT_OUTPUT
@@ -619,17 +408,11 @@ immutable OfpActionEmpty <: OfpActionHeader
         new(typ, len)
     end
 end
-#OfpActionEmpty(body::Bytes) = OfpActionEmtpy(btoui(body[1:2], btoui(body[3:4])))
 @bytes OfpActionEmpty
 @length OfpActionEmpty
 @string OfpActionEmpty
 @bytesconstructor OfpActionEmpty
-#function bytes(act::OfpActionEmpty)
-#    byts::Bytes = zeros(Uint8, 4)
-#    byts[1:2] = bytes(act.typ)
-#    byts[3:4] = bytes(act.len)
-#    byts
-#end
+
 immutable OfpActionOutput <: OfpActionHeader
     typ::Uint16 # OFPAT_OUTPUT. XXX Accroding to spec it should be "type",
                     # which in Julia is a keyword however.
@@ -643,23 +426,11 @@ immutable OfpActionOutput <: OfpActionHeader
         new(typ, len, port, max_len)
     end
 end
-#function OfpActionOutput(body::Bytes)
-#    typ::Uint16 = btoui(body[1:2])
-#    len::Uint16 = btoui(body[3:4])
-#    port::Uint16 = btoui(body[5:6])
-#    max_len::Uint16 = btoui(body[7:8])
-#    OfpActionOutput(typ, len, port, max_len)
-#end
 @bytes OfpActionOutput
 @length OfpActionOutput
 @string OfpActionOutput
 @bytesconstructor OfpActionOutput
-#function subbytes(action::OfpActionOutput)
-#    byts::Bytes = zeros(Uint8, give_length(action) - 4)
-#    byts[1:2] = bytes(action.port)
-#    byts[3:4] = bytes(action.max_len)
-#    byts
-#end
+
 immutable OfpActionEnqueue <: OfpActionHeader
     typ::Uint16 # OFPAT_ENQUEUE. XXX Accroding to spec it should be "type",
                     # which in Julia is a keyword however.
@@ -675,23 +446,10 @@ immutable OfpActionEnqueue <: OfpActionHeader
         new(typ, len, port, zeros(Uint8, 6), queue_id)
     end
 end
-#function OfpActionEnqueue(body::Bytes)
-#    typ::Uint16 = btoui(body[1:2])
-#    len::Uint16 = btoui(body[3:4])
-#    port::Uint16 = btoui(body[5:6])
-#    queue_id::Uint32 = btoui(body[13:16])
-#    OfpActionEnqueue(typ, len, port, queue_id)
-#end
 @bytes OfpActionEnqueue
 @length OfpActionEnqueue
 @string OfpActionEnqueue
 @bytesconstructor OfpActionEnqueue [:pad=>6]
-#function subbytes(action::OfpActionEnqueue)
-#    byts::Bytes = zeros(Uint8, give_length(action) - 4)
-#    byts[1:2] = bytes(action.port)
-#    byts[end-3:end] = bytes(action.queue_id)
-#    byts
-#end
 immutable OfpActionVlanVid <: OfpActionHeader
     typ::Uint16 # OFPAT_OUTPUT. XXX Accroding to spec it should be "type",
                     # which in Julia is a keyword however.
@@ -705,21 +463,11 @@ immutable OfpActionVlanVid <: OfpActionHeader
         new(typ, len, vlan_vid, zeros(Uint8, 2))
     end
 end
-#function OfpActionVlanVid(body::Bytes)
-#    typ::Uint16 = btoui(body[1:2])
-#    len::Uint16 = btoui(body[3:4])
-#    vlan_vid::Uint16 = btoui(body[5:6])
-#    OfpActionVlanVid(typ, len, vlan_vid)
-#end
 @bytes OfpActionVlanVid
 @length OfpActionVlanVid
 @string OfpActionVlanVid
 @bytesconstructor OfpActionVlanVid [:pad=>2]
-#function subbytes(action::OfpActionVlanVid)
-#    byts::Bytes = zeros(Uint8, give_length(action) - 4)
-#    byts[1:2] = bytes(action.vlan_vid)
-#    byts
-#end
+
 immutable OfpActionVlanPcp <: OfpActionHeader
     typ::Uint16 # OFPAT_SET_VLAN_PCP. XXX Accroding to spec it should be "type",
                     # which in Julia is a keyword however.
@@ -733,21 +481,11 @@ immutable OfpActionVlanPcp <: OfpActionHeader
         new(typ, len, vlan_pcp, zeros(Uint8, 3))
     end
 end
-#function OfpActionVlanPcp(body::Bytes)
-#    typ::Uint16 = btoui(body[1:2])
-#    len::Uint16 = btoui(body[3:4])
-#    vlan_pcp::Uint8 = btoui(body[5])
-#    OfpActionVlanPcp(typ, len, vlan_pcp)
-#end
 @bytes OfpActionVlanPcp
 @length OfpActionVlanPcp
 @string OfpActionVlanPcp
 @bytesconstructor OfpActionVlanPcp [:pad=>3]
-#function subbytes(action::OfpActionVlanPcp)
-#    byts::Bytes = zeros(Uint8, give_length(action) - 4)
-#    byts[1] = bytes(action.vlan_vid)
-#    byts
-#end
+
 # Exception for message constructors which rely on providing the right constant
 # as message type.
 type WrongMessageType <: Exception
@@ -770,22 +508,11 @@ immutable OfpActionDlAddress <: OfpActionHeader
         new(typ, len, dl_addr, zeros(Uint8, 6))
     end
 end
-#function OfpActionDlAddress(body::Bytes)
-#    typ::Uint16 = btoui(body[1:2])
-#    len::Uint16 = btoui(body[3:4])
-#    dl_addr::Bytes = btoui(body[5:5 + OFP_MAX_ETH_ALEN - 1])
-#    OfpActionDlAddress(typ, len, dl_addr)
-#end
 @bytes OfpActionDlAddress
 @length OfpActionDlAddress
 @string OfpActionDlAddress
 @bytesconstructor OfpActionDlAddress [:dl_addr=>OFP_MAX_ETH_ALEN, :pad=>6]
-#function subbytes(action::OfpActionDlAddress)
-#    byts::Bytes = zeros(Uint8, give_length(action) - 4)
-#    byts[1:OFP_MAX_ETH_ALEN] = bytes(action.dl_addr)
-#    @assert length(byts) - OFP_MAX_ETH_ALEN == 6
-#    byts
-#end
+
 # OFPAT_SET_NW_SRC/DST
 immutable OfpActionNwAddress <: OfpActionHeader
     typ::Uint16 # OFPAT_SET_NW_SRC/DST. XXX Accroding to spec it should be "type",
@@ -799,22 +526,11 @@ immutable OfpActionNwAddress <: OfpActionHeader
         new(typ, len, nw_addr)
     end
 end
-#function OfpActionNwAddress(body::Bytes)
-#    typ::Uint16 = btoui(body[1:2])
-#    len::Uint16 = btoui(body[3:4])
-#    nw_addr::Uint32 = btoui(body[5:8])
-#    OfpActionNwAddress(typ, len, nw_addr)
-#end
 @bytes OfpActionNwAddress
 @length OfpActionNwAddress
 @string OfpActionNwAddress
 @bytesconstructor OfpActionNwAddress
-#function subbytes(action::OfpActionNwAddress)
-#    byts::Bytes = zeros(Uint8, give_length(action) - 4)
-#    byts[1:4] = bytes(action.nw_addr)
-#    @assert length(byts) - 4 == 0
-#    byts
-#end
+
 # OFPAT_SET_NW_TOS
 immutable OfpActionNwTos <: OfpActionHeader
     typ::Uint16 # OFPAT_SET_NW_TOS. XXX Accroding to spec it should be "type",
@@ -833,12 +549,7 @@ end
 @length OfpActionNwTos
 @string OfpActionNwTos
 @bytesconstructor OfpActionNwTos [:pad=>3]
-#function subbytes(action::OfpActionNwTos)
-#    byts::Bytes = zeros(Uint8, give_length(action) - 4)
-#    byts[1] = action.nw_tos
-#    @assert length(byts) - 1 == 3
-#    byts
-#end
+
 # OFPAT_TP_PORT
 immutable OfpActionTpPort <: OfpStruct
     typ::Uint16 # OFPAT_SET_TP_SRC/DST. XXX Accroding to spec it should be "type",
@@ -856,22 +567,10 @@ immutable OfpActionTpPort <: OfpStruct
         new(typ, len, tp_port, zeros(Uint8, 2))
     end
 end
-#function OfpActionTpPort(body::Bytes)
-#    typ::Uint16 = btoui(body[1:2])
-#    len::Uint16 = btoui(body[3:4])
-#    tp_port::Uint16 = btoui(body[5:6])
-#    OfpActionTpPort(typ, len, tp_port)
-#end
 @bytes OfpActionTpPort
 @length OfpActionTpPort
 @string OfpActionTpPort
 @bytesconstructor OfpActionTpPort [:pad=>2]
-#function subbytes(action::OfpActionTpPort)
-#    byts::Bytes = zeros(Uint8, give_length(action) - 4)
-#    byts[1:2] = bytes(action.tp_port)
-#    @assert length(byts) - 1 == 2
-#    byts
-#end
 # OFPAT_VENDOR
 immutable OfpActionVendor <: OfpStruct
     typ::Uint16 # OFPAT_VENDOR. XXX Accroding to spec it should be "type",
@@ -886,24 +585,11 @@ immutable OfpActionVendor <: OfpStruct
         new(OFPAT_VENDOR, len, vendor, body)
     end
 end
-#function OfpActionVendor(body::Bytes)
-#    typ::Uint16 = btoui(body[1:2])
-#    len::Uint16 = btoui(body[3:4])
-#    vendor::Uint32 = btoui(body[5:8])
-#    bdy::Bytes = body[9:end]
-#    OfpActionVendor(typ, len, vendor, bdy)
-#end
 @bytes OfpActionVendor
 @length OfpActionVendor
 @string OfpActionVendor
 @bytesconstructor OfpActionVendor
-#function subbytes(action::OfpActionVendor)
-#    byts::Bytes = zeros(Uint8, give_length(action) - 4)
-#    byts[1:4] = bytes(action.vendor)
-#    bytes[5:end] = action.body
-#    @assert length(byts) - 1 == 0
-#    byts
-#end
+
 # Packet in messages
 immutable OfpPacketIn <: OfpMessage
     header::OfpHeader 
@@ -921,21 +607,11 @@ immutable OfpPacketIn <: OfpMessage
         new(header, buffer_id, total_len, in_port, reason, 0x00, data)
     end
 end
-#tostring(msg::OfpPacketIn) = "<header: $(tostring(msg.header)), buffer_id:
-#    $(msg.buffer_id), total_len: $(msg.total_len), in_port: $(msg.in_port), reason:
-#    $(msg.reason), data: $(msg.data)>"
-#OfpPacketIn(header::OfpHeader, body::Bytes) = begin
-#    datalen = length(body) - 10
-#    data = zeros(Uint8, datalen)
-#    for i = 1:datalen
-#        data[i] = body[11 + i - 1]
-#    end
-#    OfpPacketIn(header, btoui(body[1:4]), btoui(body[5:6]), btoui(body[7:8]), body[9], data)
-#end
 @bytes OfpPacketIn
 @length OfpPacketIn
 @string OfpPacketIn
 @bytesconstructor OfpPacketIn
+
 # Port status messages
 immutable OfpPortStatus <: OfpMessage
     header::OfpHeader
@@ -947,13 +623,11 @@ immutable OfpPortStatus <: OfpMessage
         new(header, reason, zeros(Uint8, 7), desc)
     end
 end
-#OfpPortStatus(header::OfpHeader, body::Bytes) = OfpPortStatus(header, body[1], OfpPhyPort(body[17:64]))
 @bytes OfpPortStatus
 @length OfpPortStatus
 @string OfpPortStatus
 @bytesconstructor OfpPortStatus [:pad=>7]
-#give_length(portstatus::Type{OfpPortStatus}) = give_length(OfpHeader) + 8 +
-#    give_length(OfpPhyPort)
+
 # Modify StateMessages
 # Flow setup and teardown (controller -> datapath)
 immutable OfpFlowMod <: OfpMessage
@@ -994,26 +668,7 @@ end
 @length OfpFlowMod
 @string OfpFlowMod
 @bytesconstructor OfpFlowMod
-#give_length(flowmod::OfpFlowMod) = give_length(OfpHeader) + give_length(OfpMatch) + 24 + give_length(flowmod.actions)
-# XXX Just as reading the length it should be possible to serialize messages
-# seamlessly and automaically using the fields. Some metaprogramming maybe?
-#bytes(flowmod::OfpFlowMod) = begin
-#    matchlen = give_length(OfpMatch)
-#    byts::Bytes = zeros(Uint8, flowmod.header.msglen)
-#    byts[1:8] = bytes(flowmod.header)
-#    byts[9:9+matchlen-1] = bytes(flowmod.match)
-#    byts[9+matchlen:9+matchlen+8-1] = bytes(flowmod.cookie)
-#    byts[9+matchlen+8:9+matchlen+10-1] = bytes(flowmod.command)
-#    byts[9+matchlen+10:9+matchlen+12-1] = bytes(flowmod.idle_timeout)
-#    byts[9+matchlen+12:9+matchlen+14-1] = bytes(flowmod.hard_timeout)
-#    byts[9+matchlen+14:9+matchlen+16-1] = bytes(flowmod.priority)
-#    byts[9+matchlen+16:9+matchlen+20-1] = bytes(flowmod.buffer_id)
-#    byts[9+matchlen+20:9+matchlen+22-1] = bytes(flowmod.out_port)
-#    byts[9+matchlen+22:9+matchlen+24-1] = bytes(flowmod.flags)
-#    actionbytes = bytes(flowmod.actions)
-#    byts[9+matchlen+24:end] = actionbytes
-#    byts
-#end
+
 immutable OfpPortMod <: OfpMessage
     header::OfpHeader
     port_no::Uint16
@@ -1036,19 +691,7 @@ end
 @length OfpPortMod
 @string OfpPortMod
 @bytesconstructor OfpPortMod [:hw_addr=>OFP_MAX_ETH_ALEN, :pad=>4]
-#give_length(portmod::OfpPortMod) = give_length(portmod.header) + 16 +
-#    OFP_MAX_ETH_ALEN
-#function bytes(portmod::OfpPortMod)
-#    byts::Bytes = zeros(Uint8, give_length(portmod))
-#    byts[1:8] = bytes(portmod.header)
-#    byts[9:10] = bytes(portmod.port_no)
-#    byts[11:11 + OFP_MAX_ETH_ALEN - 1] = portmod.hw_addr
-#    byts[11 + OFP_MAX_ETH_ALEN:11 + OFP_MAX_ETH_ALEN + 3] = portmod.config
-#    byts[11 + OFP_MAX_ETH_ALEN + 4:11 + OFP_MAX_ETH_ALEN + 7] = portmod.mask
-#    byts[11 + OFP_MAX_ETH_ALEN + 8:11 + OFP_MAX_ETH_ALEN + 11] =
-#        portmod.advertise
-#    byts
-#end
+
 immutable OfpEmptyMessage <: OfpMessage
     header::OfpHeader
 end
@@ -1056,7 +699,6 @@ end
 @length OfpEmptyMessage
 @string OfpEmptyMessage
 @bytesconstructor OfpEmptyMessage
-#give_length(empty::Type{OfpEmptyMessage}) = give_length(OfpHeader)
 
 type UnrecognizedMessageError <: Exception
 end
@@ -1091,17 +733,7 @@ end
 @length OfpDescStats
 @string OfpDescStats [:mfr_desc, :hw_desc, :sw_desc, :serial_num, :dp_desc]
 @bytesconstructor OfpDescStats [:mfr_desc=>DESC_STR_LEN, :hw_desc=>DESC_STR_LEN, :sw_desc=>DESC_STR_LEN, :serial_num=>SERIAL_NUM_LEN, :dp_desc=>DESC_STR_LEN]
-#function OfpDescStats(body::Bytes)
-#    mfr_desc::Bytes = body[1:DESC_STR_LEN]
-#    hw_desc::Bytes = body[DESC_STR + 1:2DESC_STR_LEN]
-#    sw_desc::Bytes = body[2DESC_STR + 1:3DESC_STR_LEN]
-#    serial_num::Bytes = 
-#        body[3DESC_STR + 1:3DESC_STR_LEN + SERIAL_NUM_LEN]
-#    dp_desc::Bytes = 
-#        body[3DESC_STR + SERIAL_NUM_LEN + 1:4DESC_STR_LEN + SERIAL_NUM_LEN]
-#    OfpDescStats(mfr_desc, hw_desc, sw_desc, serial_num, dp_desc)
-#end
-#give_length(::Type{OfpDescStats}) = 4DESC_STR_LEN + SERIAL_NUM_LEN
+
 # Body for ofp_stats_request for type OFPST_FLOW.
 immutable OfpFlowStatsRequest <: OfpStatsRequestBody
     match::OfpMatch # Fields to match.
@@ -1117,14 +749,7 @@ end
 @length OfpFlowStatsRequest
 @string OfpFlowStatsRequest
 @bytesconstructor OfpFlowStatsRequest
-#function bytes(statsreq::OfpFlowStatsRequest)
-#    byts::Bytes = zeros(Uint8, give_length(statsreq))
-#    byts[1:40] = bytes(statsreq.match)
-#    byts[41] = statsreq.table_id
-#    byts[43:44] = statsreq.out_port
-#    byts
-#end
-#give_length(::Type{OfpFlowStatsRequest}) = give_length(OfpMatch) + 4
+
 # Body of reply to OFPST_FLOW request.
 immutable OfpFlowStats <: OfpStatsReplyBody
     length::Uint16 # Length of this entry.
@@ -1152,23 +777,6 @@ end
 @length OfpFlowStats
 @string OfpFlowStats
 @bytesconstructor OfpFlowStats [:pad2=>6]
-#give_length(flowstats::OfpFlowStats) = 48 + give_length(OfpMatch) + give_length(flowstats.actions)
-#function OfpFlowStats(body::Bytes)
-#    length::Uint16 = btoi(body[1:2])
-#    table_id::Uint8 = body[3]
-#    match::OfpMatch = OfpMatch(body[5:44])
-#    duration_sec::Uint32 = btoui(body[45:48])
-#    duration_nsec::Uint32 = btoui(body[49:52])
-#    priority::Uint16 = btoui(body[53:54])
-#    idle_timeout::Uint16 = btoui(body[55:56])
-#    hard_timeout::Uint16 = btoui(body[57:58])
-#    cookie::Uint64 = btoui(body[65:72])
-#    packet_count::Uint64 = btoui(body[73:80])
-#    byte_count::Uint64 = btoui(body[81:88])
-#    actions::Vector{OfpActionHeader} = OfpActionHeaders(body[89:end])
-#    OfpFlowStats(length, table_id, match, duration_sec, duration_nsec, priority,
-#        idle_timeout, hard_timeout, cookie, packet_count, byte_count, actions)
-#end
 
 # Body for ofp_stats_request of type OFPST_AGGREGATE
 immutable OfpAggregateStatsRequest <: OfpStatsRequestBody
@@ -1183,14 +791,6 @@ end
 @length OfpAggregateStatsRequest
 @string OfpAggregateStatsRequest
 @bytesconstructor OfpAggregateStatsRequest
-#give_length(::Type{OfpAggregateStatsRequest}) = give_length(OfpMatch) + 4
-#function bytes(req::OfpAggregateStatsRequest)
-#    byts::Bytes = zeros(Uint8, give_length(OfpAggregateStatsRequest))
-#    byts[1:40] = bytes(req.match)
-#    byts[41] = req.table_id
-#    byts[43:44] = bytes(out_port)
-#    byts
-#end
 
 # Body of reply to OFPST_AGGREGATE request.
 immutable OfpAggregateStatsReply <: OfpStatsReplyBody
@@ -1205,13 +805,6 @@ end
 @length OfpAggregateStatsReply
 @string OfpAggregateStatsReply
 @bytesconstructor OfpAggregateStatsReply [:pad=>4]
-#give_length(::Type{OfpAggregateStatsReply}) = 24
-#function OfpAggregateStatsReply(body::Bytes)
-#   packet_count::Uint64 = btoui(body[1:8])
-#    byte_count::Uint64 = btoui(body[9:16])
-#    flow_count::Uint32 = btoui(body[17:20])
-#    OfpAggregateStatsReply(packet_count, byte_count, flow_count)
-#end
 
 # Body of reply to OFPST_TABLE request.
 immutable OfpTableStats <: OfpStatsReplyBody
@@ -1236,23 +829,6 @@ end
 @length OfpTableStats
 @string OfpTableStats [:name]
 @bytesconstructor OfpTableStats [:pad=>3, :name=>OFP_MAX_TABLE_NAME_LEN]
-#give_length(::Type{OfpTableStats}) = 32 + OFP_MAX_TABLE_NAME_LEN
-#function OfpTableStats(body::Bytes)
-#    table_id::Uint8 = btoui(body[1:2])
-#    name::Bytes = body[3:3 + OFP_MAX_TABLE_NAME_LEN - 1]
-#    wildcards::Uint32 = 
-#        btoui(body[3 + OFP_MAX_TABLE_NAME_LEN : 3 + OFP_MAX_TABLE_NAME_LEN + 4 - 1])
-#    max_entries::Uint32 = 
-#        btoui(body[3 + OFP_MAX_TABLE_NAME_LEN + 4 : 3 + OFP_MAX_TABLE_NAME_LEN + 8 - 1])
-#    active_count::Uint32 = 
-#        btoui(body[3 + OFP_MAX_TABLE_NAME_LEN + 8 : 3 + OFP_MAX_TABLE_NAME_LEN + 12 - 1])
-#    lookup_count::Uint64 = 
-#        btoui(body[3 + OFP_MAX_TABLE_NAME_LEN + 12 : 3 + OFP_MAX_TABLE_NAME_LEN + 20 - 1])
-#    matched_count::Uint64 = 
-#        btoui(body[3 + OFP_MAX_TABLE_NAME_LEN + 20 : 3 + OFP_MAX_TABLE_NAME_LEN + 28 - 1])
-#    OfpTableStats(table_id, name, wildcards, max_entries, active_count,
-#        lookup_count, matched_count)
-#end
 
 # Body for ofp_stats_request of type OFPST_PORT.
 immutable OfpPortStatsRequest <: OfpStatsRequestBody
@@ -1266,13 +842,6 @@ end
 @length OfpPortStatsRequest
 @string OfpPortStatsRequest
 @bytesconstructor OfpPortStatsRequest [:pad=>6]
-#give_length(::Type{OfpPortStatsRequest}) = 8
-#OfpPortStatsRequest(body::Bytes) = OfpPortStatsRequest(btoui(body[1:2]))
-#function bytes(req::OfpPortStatsRequest)
-#    byts::Bytes = zeros(Uint8, give_length(req))
-#    byts[1:2] = bytes(req.port_no)
-#    byts
-#end
 
 # Body of reply to OFPST_PORT request. If a counter is unsupported, set the
 # field to all ones.

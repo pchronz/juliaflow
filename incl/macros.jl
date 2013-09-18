@@ -139,7 +139,7 @@ macro bytesconstructor(t, szs...)
         ex::Expr
         if ismatch(r"^pad.*", string(fields[i]))
             if typs[i] <: Number
-                continue
+                ex = :(pos += $(sizeof(typs[i])))
             elseif typs[i] <: Array
                 ex = :(pos += $(sizes[fields[i]]))
             else

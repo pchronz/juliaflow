@@ -547,7 +547,7 @@ end
 @bytesconstructor OfpActionNwTos [:pad=>3]
 
 # OFPAT_TP_PORT
-immutable OfpActionTpPort <: OfpStruct
+immutable OfpActionTpPort <: OfpActionHeader
     typ::Uint16 # OFPAT_SET_TP_SRC/DST. 
     len::Uint16 # Length of action, including this header. This is the length of
                 # action, including any padding to make it 64-bit algined. 8.
@@ -568,7 +568,7 @@ end
 @bytesconstructor OfpActionTpPort [:pad=>2]
 
 # OFPAT_VENDOR
-immutable OfpActionVendor <: OfpStruct
+immutable OfpActionVendor <: OfpActionHeader
     typ::Uint16 # OFPAT_VENDOR. 
     len::Uint16 # Length of action, including this header. This is the length of
                 # action, including any padding to make it 64-bit algined. 8.
@@ -583,7 +583,7 @@ end
 @bytes OfpActionVendor
 @length OfpActionVendor
 @string OfpActionVendor
-@bytesconstructor OfpActionVendor
+@bytesconstructor OfpActionVendor [] [:body=>:(len - 8)]
 
 # Packet in messages
 immutable OfpPacketIn <: OfpMessage
@@ -598,8 +598,10 @@ immutable OfpPacketIn <: OfpMessage
                            # field in the header. Because of padding, offsetof(struct ofp_packet_in,
                            # data) == sizeof(struct ofp_packet_in) - 2.
     OfpPacketIn(header, buffer_id, total_len, in_port, reason, data) = begin
-        @assert header.msglen == OFPT_PACKET_IN
-        new(header, buffer_id, total_len, in_port, reason, 0x00, data)
+        @assert header.msgtype == OFPT_PACKET_IN
+        obj = new(header, buffer_id, total_len, in_port, reason, 0x00, data)
+        @assert header.msglen == give_length(obj)
+        obj
     end
 end
 @bytes OfpPacketIn
@@ -615,7 +617,9 @@ immutable OfpPortStatus <: OfpMessage
     desc::OfpPhyPort
     OfpPortStatus(header, reason, desc) = begin
         @assert header.msgtype == OFPT_PORT_STATUS
-        new(header, reason, zeros(Uint8, 7), desc)
+        obj = new(header, reason, zeros(Uint8, 7), desc)
+        @assert header.msglen == give_length(obj)
+        obj
     end
 end
 @bytes OfpPortStatus
@@ -677,9 +681,10 @@ immutable OfpPortMod <: OfpMessage
     pad::Bytes # Length 4. Pad to 64-bits.
     OfpPortMod(header, port_no, hw_addr, config, mask, advertise) = begin
         @assert header.msgtype == OFPT_PORT_MOD
-        @assert header.msglen == length(OfpPortMod)
         @assert length(hw_addr) == OFP_MAX_ETH_ALEN
-        new(header, port_no, hw_addr, config, mask, advertise, zeros(Uint8, 4))
+        obj = new(header, port_no, hw_addr, config, mask, advertise, zeros(Uint8, 4))
+        @assert header.msglen == give_length(obj)
+        obj
     end
 end
 @bytes OfpPortMod

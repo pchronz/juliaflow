@@ -497,28 +497,169 @@ actvendeser = OfpActionVendor(actvenbyts)
 @test give_length(actvendeser) == 24
 
 # OfpPacketIn
+header = OfpHeader(OFPT_PACKET_IN, uint16(34))
 # Test the constructor.
+packin = OfpPacketIn(header, uint32(13), uint16(42), uint16(2), OFPR_NO_MATCH,
+    zeros(Uint8, 16))
+@test packin.header ==  header
+@test packin.buffer_id == 13
+@test packin.total_len == 42
+@test packin.in_port == 2
+@test packin.reason == OFPR_NO_MATCH
+@test packin.data == zeros(Uint8, 16)
 # Test the serialization.
+packinbyts = bytes(header)
+append!(packinbyts, b"\x00\x00\x00\x0D")
+append!(packinbyts, b"\x00\x2A")
+append!(packinbyts, b"\x00\x02")
+append!(packinbyts, b"\x00")
+append!(packinbyts, b"\x00")
+append!(packinbyts, b"\x00\x00\x00\x00\x00\x00\x00\x00")
+append!(packinbyts, b"\x00\x00\x00\x00\x00\x00\x00\x00")
+@test bytes(packin) == packinbyts
 # Test the deserialization.
+packindeser = OfpPacketIn(header, packinbyts[9:end])
+@test packindeser.header ==  header
+@test packindeser.buffer_id == 13
+@test packindeser.total_len == 42
+@test packindeser.in_port == 2
+@test packindeser.reason == OFPR_NO_MATCH
+@test packindeser.data == zeros(Uint8, 16)
 # Test length.
+@test give_length(packin) == length(packinbyts)
+@test give_length(packindeser) == length(packinbyts)
 
 # OfpPortStatus
+header = OfpHeader(OFPT_PORT_STATUS, uint16(64))
 # Test the constructor.
+hw_addr = Array(Uint8, OFP_MAX_ETH_ALEN)
+name = Array(Uint8, OFP_MAX_PORT_NAME_LEN)
+phyport = OfpPhyPort(uint16(1), hw_addr, name, OFPC_FLOW_STATS, OFPPS_LINK_DOWN,
+    OFPPF_10MB_HD, OFPPF_100MB_HD, OFPPF_1GB_HD, OFPPF_COPPER)
+portstatus = OfpPortStatus(header, OFPPR_ADD, phyport)
+@test portstatus.header == header
+@test portstatus.reason == OFPPR_ADD
+@test portstatus.desc == phyport
 # Test the serialization.
+portstatusbyts = bytes(header)
+append!(portstatusbyts, b"\x00")
+append!(portstatusbyts, b"\x00\x00\x00\x00\x00\x00\x00")
+append!(portstatusbyts, bytes(phyport))
+@test bytes(portstatus) == portstatusbyts
 # Test the deserialization.
+portstatusdeser = OfpPortStatus(header, portstatusbyts[9:end])
+@test portstatusdeser.header == header
+@test portstatusdeser.reason == OFPPR_ADD
+@test portstatusdeser.desc.port_no == 1
+@test portstatusdeser.desc.hw_addr == hw_addr
+@test portstatusdeser.desc.name == name
+@test portstatusdeser.desc.config == OFPC_FLOW_STATS
+@test portstatusdeser.desc.state == OFPPS_LINK_DOWN
 # Test length.
+@test give_length(portstatus) == length(portstatusbyts)
+@test give_length(portstatusdeser) == length(portstatusbyts)
 
 # OfpFlowMod
+header = OfpHeader(OFPT_FLOW_MOD, uint16(112))
+dl_src = Array(Uint8, OFP_MAX_ETH_ALEN)
+dl_dst = Array(Uint8, OFP_MAX_ETH_ALEN)
+match = OfpMatch(uint32(0), uint16(13), dl_src, dl_dst, uint16(13), uint16(13),
+    uint16(3), uint8(1), uint8(3), uint32(13), uint32(14), uint16(3), uint16(4))
+actout = OfpActionOutput(OFPAT_OUTPUT, uint16(8), uint16(3), uint16(64))
+actven = OfpActionVendor(OFPAT_VENDOR, uint16(24), uint32(63), ones(Uint8, 16))
+acttp = OfpActionTpPort(OFPAT_SET_TP_SRC, uint16(8), uint16(13))
 # Test the constructor.
+flomod = OfpFlowMod(header, match, uint64(13), OFPFC_DELETE, uint16(5),
+    uint16(7), uint16(1), uint32(15), uint16(2), OFPFF_SEND_FLOW_REM, [actout,
+    actven, acttp])
+@test flomod.header == header
+@test flomod.match == match
+@test flomod.cookie == 13
+@test flomod.command == OFPFC_DELETE
+@test flomod.idle_timeout == 5
+@test flomod.hard_timeout == 7
+@test flomod.priority == 1
+@test flomod.buffer_id == 15
+@test flomod.out_port == 2
+@test flomod.flags == OFPFF_SEND_FLOW_REM
+@test flomod.actions == [actout, actven, acttp]
 # Test the serialization.
+flomodbyts = bytes(header)
+append!(flomodbyts, bytes(match))
+append!(flomodbyts, b"\x00\x00\x00\x00\x00\x00\x00\x0D")
+append!(flomodbyts, b"\x00\x03")
+append!(flomodbyts, b"\x00\x05")
+append!(flomodbyts, b"\x00\x07")
+append!(flomodbyts, b"\x00\x01")
+append!(flomodbyts, b"\x00\x00\x00\x0F")
+append!(flomodbyts, b"\x00\x02")
+append!(flomodbyts, b"\x00\x01")
+append!(flomodbyts, reduce((els, el)->([els, bytes(el)]), Uint8[], [actout,
+    actven,acttp]))
+@test bytes(flomod) == flomodbyts
 # Test the deserialization.
+flomoddeser = OfpFlowMod(header, flomodbyts[9:end])
+@test flomoddeser.header == header
+@test flomoddeser.match.wildcards == 0
+@test flomoddeser.match.in_port == 13
+@test flomoddeser.match.dl_src == dl_src
+@test flomoddeser.match.dl_dst == dl_dst
+@test flomoddeser.match.dl_vlan == 13
+@test flomoddeser.match.dl_vlan_pcp == 13
+@test flomoddeser.match.dl_type == 3
+@test flomoddeser.match.nw_tos == 1
+@test flomoddeser.match.nw_proto == 3
+@test flomoddeser.match.nw_src == 13
+@test flomoddeser.match.nw_dst == 14
+@test flomoddeser.match.tp_src == 3
+@test flomoddeser.match.tp_dst == 4
+@test flomoddeser.cookie == 13
+@test flomoddeser.command == OFPFC_DELETE
+@test flomoddeser.idle_timeout == 5
+@test flomoddeser.hard_timeout == 7
+@test flomoddeser.priority == 1
+@test flomoddeser.buffer_id == 15
+@test flomoddeser.out_port == 2
+@test flomoddeser.flags == OFPFF_SEND_FLOW_REM
+@test bytes(flomoddeser.actions[1]) == bytes(actout)
+@test bytes(flomoddeser.actions[2]) == bytes(actven)
+@test bytes(flomoddeser.actions[3]) == bytes(acttp)
 # Test length.
+@test give_length(flomod) == length(flomodbyts)
+@test give_length(flomoddeser) == length(flomodbyts)
 
 # OfpPortMod
+header = OfpHeader(OFPT_PORT_MOD, uint16(32))
 # Test the constructor.
+hw_addr = Array(Uint8, OFP_MAX_ETH_ALEN)
+pormod = OfpPortMod(header, uint16(11), hw_addr, OFPPC_PORT_DOWN, OFPPC_NO_STP,
+    uint32(0))
+@test pormod.header == header
+@test pormod.port_no == 11
+@test pormod.hw_addr == hw_addr
+@test pormod.config == OFPPC_PORT_DOWN
+@test pormod.mask == OFPPC_NO_STP
+@test pormod.advertise == 0
 # Test the serialization.
+pormodbyts = bytes(header)
+append!(pormodbyts, b"\x00\x0B")
+append!(pormodbyts, hw_addr)
+append!(pormodbyts, b"\x00\x00\x00\x01")
+append!(pormodbyts, b"\x00\x00\x00\x02")
+append!(pormodbyts, b"\x00\x00\x00\x00")
+append!(pormodbyts, b"\x00\x00\x00\x00")
+@test bytes(pormod) == pormodbyts
 # Test the deserialization.
+pormoddeser = OfpPortMod(header, pormodbyts[9:end])
+@test pormoddeser.header == header
+@test pormoddeser.port_no == 11
+@test pormoddeser.hw_addr == hw_addr
+@test pormoddeser.config == OFPPC_PORT_DOWN
+@test pormoddeser.mask == OFPPC_NO_STP
+@test pormoddeser.advertise == 0
 # Test length.
+@test give_length(pormod) == length(pormodbyts)
+@test give_length(pormoddeser) == length(pormodbyts)
 
 # OfpEmptyMessage
 # Test the constructor.

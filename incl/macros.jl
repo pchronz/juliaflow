@@ -120,12 +120,8 @@ macro string(typ, args...)
     end
 end
 # Create a byte-based constructor for the given type.
-macro bytesconstructor(t, szs...)
-    typ::Type = eval(t)
-    fields::Vector{Symbol} = names(typ)
-    typs::Tuple = typ.types
-    sizes::Dict{Symbol, Int} = length(szs) > 0 ? eval(szs[1]) : Dict{Symbol,
-        Int}()
+function bytesconstructor(t::Symbol, typ::Type, fields::Vector{Symbol},
+    typs::Tuple, sizes::Dict{Symbol, Int}, varsizes::Dict{Symbol, Expr})
     # Expanding the array dynamically since we need to filter out the padding.
     # The penalty should be quite low, since there are rather few fields in each
     # type, and the construction macro is going to be called just once per type.
@@ -148,23 +144,29 @@ macro bytesconstructor(t, szs...)
         elseif typs[i] <: Number
             len = sizeof(typs[i])
             ex = quote
-                fieldvals = {fieldvals..., btoui(bytes[pos:pos + $(len) - 1])}
+                val = btoui(bytes[pos:pos + $(len) - 1])
+                local $(fields[i]) = val
+                fieldvals = {fieldvals..., val}
                 pos += $(len)
             end
         elseif typs[i] == OfpHeader
             hasheader = true
             ex = :(fieldvals = [fieldvals..., header])
         elseif typs[i] <: OfpStruct
-            typass = Expr(:(::), :o, typs[i])
             ex = quote
                 o = $(typs[i])(bytes[pos:end])
-                $(typass)
+                isa(o, $(typs[i]))
                 fieldvals = {fieldvals..., o}
                 pos += give_length(o)
             end
         elseif typs[i] <: Bytes
-            lenex = i == length(fields) && !haskey(sizes, fields[i]) ?
-                :(length(bytes)) : :(pos + $(sizes[fields[i]]) - 1)
+            lenex::Expr = if haskey(sizes, fields[i])
+                :(pos + $(sizes[fields[i]]) - 1)
+            elseif haskey(varsizes, fields[i])
+                :(pos + $(varsizes[fields[i]]) - 1)
+            else
+                :(length(bytes))
+            end
             ex = quote
                 append!(fieldvals, {bytes[pos:$(lenex)]})
                 pos = $(lenex) + 1
@@ -175,11 +177,19 @@ macro bytesconstructor(t, szs...)
                 error("Handling array fields works only with element types that
                     subtype OfpStruct and not with $(typs[i])!")
             end
-            typass = Expr(:(::), :o, eltyp)
             ex = quote
                 arr = Array($(eltyp), 0)
+                # XXX If I change the following 4 lines to a conditional
+                # statement, where "constructor" is declared and defined within
+                # the body of the if-statement, then I get a strange looking
+                # error which tells me that constructor is not defined. Bug in
+                # Julia?
+                constructor = $(eltyp)
+                if !isleaftype($(eltyp))
+                    constructor = $(symbol(string(eltyp, "Factory")))
+                end
                 while pos <= length(bytes)
-                    o = $(eltyp)(bytes[pos:end])
+                    o = constructor(bytes[pos:end])
                     arr = [arr..., o]
                     len = give_length(o)
                     pos += len
@@ -200,5 +210,17 @@ macro bytesconstructor(t, szs...)
             $(t)(fieldvals...)
         end
     end
+end
+# szs[1]-->Dict{Symbol, Int}: length of a field
+# szs[2]-->Dict{Symbol, Expr}: expression to compute the length of a field
+macro bytesconstructor(t, szs...)
+    typ::Type = eval(t)
+    fields::Vector{Symbol} = names(typ)
+    typs::Tuple = typ.types
+    sizes::Dict{Symbol, Int} = length(szs) > 0 ? (length(eval(szs[1])) > 0 ?
+        eval(szs[1]) : Dict{Symbol, Int}()) : Dict{Symbol, Int}()
+    varsizes::Dict{Symbol, Expr} = length(szs) > 1 ? (length(eval(szs[2])) > 0 ?
+        eval(szs[2]) : Dict{Symbol, Expr}()) : Dict{Symbol, Expr}()
+    bytesconstructor(t, typ, fields, typs, sizes, varsizes)
 end
 

@@ -662,29 +662,162 @@ pormoddeser = OfpPortMod(header, pormodbyts[9:end])
 @test give_length(pormoddeser) == length(pormodbyts)
 
 # OfpEmptyMessage
+header = OfpHeader(OFPT_STATS_REPLY, uint16(32))
 # Test the constructor.
+empty = OfpEmptyMessage(header)
+@test empty.header == header
 # Test the serialization.
+emptybyts = bytes(header)
+@test bytes(empty) == emptybyts
 # Test the deserialization.
+emptydeser = OfpEmptyMessage(header, Uint8[])
+@test emptydeser.header == header
 # Test length.
+@test give_length(empty) == 8
+@test give_length(emptydeser) == 8
 
 # OfpDescStats
 # Test the constructor.
+mfr_desc = Array(Uint8, DESC_STR_LEN)
+hw_desc = Array(Uint8, DESC_STR_LEN)
+sw_desc = Array(Uint8, DESC_STR_LEN)
+serial_num = Array(Uint8, SERIAL_NUM_LEN)
+dp_desc = Array(Uint8, DESC_STR_LEN)
+descstats = OfpDescStats(mfr_desc, hw_desc, sw_desc, serial_num, dp_desc)
+@test descstats.mfr_desc == mfr_desc
+@test descstats.hw_desc == hw_desc
+@test descstats.sw_desc == sw_desc
+@test descstats.serial_num == serial_num
+@test descstats.dp_desc == dp_desc
 # Test the serialization.
+descstatsbyts = copy(mfr_desc)
+append!(descstatsbyts, hw_desc)
+append!(descstatsbyts, sw_desc)
+append!(descstatsbyts, serial_num)
+append!(descstatsbyts, dp_desc)
+@test bytes(descstats) == descstatsbyts
 # Test the deserialization.
+descstatsdeser = OfpDescStats(descstatsbyts)
+@test descstatsdeser.mfr_desc == mfr_desc
+@test descstatsdeser.hw_desc == hw_desc
+@test descstatsdeser.sw_desc == sw_desc
+@test descstatsdeser.serial_num == serial_num
+@test descstatsdeser.dp_desc == dp_desc
 # Test length.
+@test give_length(descstats) == length(descstatsbyts)
+@test give_length(descstatsdeser) == length(descstatsbyts)
 
 # OfpFlowStatsRequest
 # Test the constructor.
+dl_src = Array(Uint8, OFP_MAX_ETH_ALEN)
+dl_dst = Array(Uint8, OFP_MAX_ETH_ALEN)
+match = OfpMatch(uint32(0), uint16(13), dl_src, dl_dst, uint16(13), uint16(13),
+    uint16(3), uint8(1), uint8(3), uint32(13), uint32(14), uint16(3), uint16(4))
+flostare = OfpFlowStatsRequest(match, 0xff, OFPP_NONE)
+@test flostare.match == match
+@test flostare.table_id == 0xff
+@test flostare.out_port == OFPP_NONE
 # Test the serialization.
+flostarebyts = bytes(match)
+append!(flostarebyts, [0xff])
+append!(flostarebyts, b"\x00")
+append!(flostarebyts, b"\xff\xff")
+@test bytes(flostare) == flostarebyts
 # Test the deserialization.
+flostaredeser = OfpFlowStatsRequest(flostarebyts)
+@test flostaredeser.match.wildcards == 0
+@test flostaredeser.match.in_port == 13
+@test flostaredeser.match.dl_src == dl_src
+@test flostaredeser.match.dl_dst == dl_dst
+@test flostaredeser.match.dl_vlan == 13
+@test flostaredeser.match.dl_vlan_pcp == 13
+@test flostaredeser.match.dl_type == 3
+@test flostaredeser.match.nw_tos == 1
+@test flostaredeser.match.nw_proto == 3
+@test flostaredeser.match.nw_src == 13
+@test flostaredeser.match.nw_dst == 14
+@test flostaredeser.match.tp_src == 3
+@test flostaredeser.match.tp_dst == 4
+@test flostaredeser.table_id == 0xff
+@test flostaredeser.out_port == OFPP_NONE
 # Test length.
+@test give_length(flostare) == length(flostarebyts)
+@test give_length(flostaredeser) == length(flostarebyts)
 
-# 30
 # OfpFlowStats
+dl_src = Array(Uint8, OFP_MAX_ETH_ALEN)
+dl_dst = Array(Uint8, OFP_MAX_ETH_ALEN)
+match = OfpMatch(uint32(0), uint16(13), dl_src, dl_dst, uint16(13), uint16(13),
+    uint16(3), uint8(1), uint8(3), uint32(13), uint32(14), uint16(3), uint16(4))
+actout = OfpActionOutput(OFPAT_OUTPUT, uint16(8), uint16(3), uint16(64))
+actven = OfpActionVendor(OFPAT_VENDOR, uint16(24), uint32(63), ones(Uint8, 16))
+acttp = OfpActionTpPort(OFPAT_SET_TP_SRC, uint16(8), uint16(13))
 # Test the constructor.
+flowstats = OfpFlowStats(0x0080, 0x01, match, uint32(10), uint32(50), uint16(3),
+    uint16(15), uint16(17), uint64(42), uint64(15), uint64(78), [actout, actven,
+    acttp])
+@test flowstats.lengt == 48 + give_length(match) + reduce((l, x)->l +
+    give_length(x), 0, [actout, actven, acttp])
+@test flowstats.table_id == 1
+@test flowstats.match == match
+@test flowstats.duration_sec == 10
+@test flowstats.duration_nsec == 50
+@test flowstats.priority == 3
+@test flowstats.idle_timeout == 15
+@test flowstats.hard_timeout == 17
+@test flowstats.cookie == 42
+@test flowstats.packet_count == 15
+@test flowstats.byte_count == 78
+@test flowstats.actions[1] == actout
+@test flowstats.actions[2] == actven
+@test flowstats.actions[3] == acttp
 # Test the serialization.
+flowstatsbyts = b"\x00\x80"
+append!(flowstatsbyts, b"\x01\x00")
+append!(flowstatsbyts, bytes(match))
+append!(flowstatsbyts, b"\x00\x00\x00\x0A")
+append!(flowstatsbyts, b"\x00\x00\x00\x32")
+append!(flowstatsbyts, b"\x00\x03")
+append!(flowstatsbyts, b"\x00\x0F")
+append!(flowstatsbyts, b"\x00\x11")
+append!(flowstatsbyts, b"\x00\x00\x00\x00\x00\x00")
+append!(flowstatsbyts, b"\x00\x00\x00\x00\x00\x00\x00\x2A")
+append!(flowstatsbyts, b"\x00\x00\x00\x00\x00\x00\x00\x0F")
+append!(flowstatsbyts, b"\x00\x00\x00\x00\x00\x00\x00\x4E")
+reduce((bs, act)->append!(bs, bytes(act)), flowstatsbyts, [actout, actven, acttp])
+@test bytes(flowstats) == flowstatsbyts
 # Test the deserialization.
+flowstatsdeser = OfpFlowStats(flowstatsbyts)
+@test flowstatsdeser.lengt == 48 + give_length(match) + reduce((l, x)->l +
+    give_length(x), 0, [actout, actven, acttp])
+@test flowstatsdeser.table_id == 1
+@test flowstatsdeser.match.wildcards == 0
+@test flowstatsdeser.match.in_port == 13
+@test flowstatsdeser.match.dl_src == dl_src
+@test flowstatsdeser.match.dl_dst == dl_dst
+@test flowstatsdeser.match.dl_vlan == 13
+@test flowstatsdeser.match.dl_vlan_pcp == 13
+@test flowstatsdeser.match.dl_type == 3
+@test flowstatsdeser.match.nw_tos == 1
+@test flowstatsdeser.match.nw_proto == 3
+@test flowstatsdeser.match.nw_src == 13
+@test flowstatsdeser.match.nw_dst == 14
+@test flowstatsdeser.match.tp_src == 3
+@test flowstatsdeser.match.tp_dst == 4
+@test flowstatsdeser.duration_sec == 10
+@test flowstatsdeser.duration_nsec == 50
+@test flowstatsdeser.priority == 3
+@test flowstatsdeser.idle_timeout == 15
+@test flowstatsdeser.hard_timeout == 17
+@test flowstatsdeser.cookie == 42
+@test flowstatsdeser.packet_count == 15
+@test flowstatsdeser.byte_count == 78
+@test isa(flowstatsdeser.actions[1], OfpActionOutput)
+@test isa(flowstatsdeser.actions[2], OfpActionVendor)
+@test isa(flowstatsdeser.actions[3], OfpActionTpPort)
 # Test length.
+@test give_length(flowstats) == length(flowstatsbyts)
+@test give_length(flowstatsdeser) == length(flowstatsbyts)
 
 # OfpAggregateStatsRequest
 # Test the constructor.

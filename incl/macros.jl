@@ -57,8 +57,6 @@ macro bytes(typ)
     typs = t.types
     exs = Array(Expr, length(fields))
     for i = 1:length(fields)
-        # No idea how to interpolate field access, so explicit code generation
-        # will have to do for now.
         ex = Expr(:., :obj, Expr(:quote, fields[i]))
         exs[i] = quote
             bs = bytes($ex)
@@ -164,8 +162,10 @@ function bytesconstructor(t::Symbol, typ::Type, fields::Vector{Symbol},
                 :(pos + $(sizes[fields[i]]) - 1)
             elseif haskey(varsizes, fields[i])
                 :(pos + $(varsizes[fields[i]]) - 1)
-            else
+            elseif i == length(fields)
                 :(length(bytes))
+            else
+                error("Cannot process a byte array of unknown length if it is not the last field!")
             end
             ex = quote
                 append!(fieldvals, {bytes[pos:$(lenex)]})

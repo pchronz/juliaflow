@@ -3,6 +3,7 @@ module OpenFlow
 # TODO API
 # TODO Use the improved bytesconstructor macro on the types that require
 # factory methods.
+# TODO Break down the large macros into functions.
 # TODO Convenience constructors to expose via API without header creation.
 # TODO Promotion for type creation or at least generic external constructors.
 # TODO License

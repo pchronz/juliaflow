@@ -752,7 +752,9 @@ end
 
 # Body of reply to OFPST_FLOW request.
 immutable OfpFlowStats <: OfpStatsReplyBody
-    length::Uint16 # Length of this entry.
+    lengt::Uint16 # Length of this entry. XXX This variable has been renamed to
+        # avoid a naming conflict with the function "length", which can collide
+        # inside the macros
     table_id::Uint8 # ID of table flow came from.
     pad::Uint8
     match::OfpMatch # Description of fields.
@@ -769,9 +771,14 @@ immutable OfpFlowStats <: OfpStatsReplyBody
     byte_count::Uint64 # Number of bytes in flow.
     actions::Vector{OfpActionHeader} # Actions.
     OfpFlowStats(length, table_id, match, duration_sec, duration_nsec, priority,
-        idle_timeout, hard_timeout, cookie, packet_count, byte_count, actions) = 
-        new(length, table_id, 0x00, match, duration_sec, duration_nsec, priority,
-        idle_timeout, hard_timeout, zeros(Uint8, 6), cookie, packet_count, byte_count, actions)
+        idle_timeout, hard_timeout, cookie, packet_count, byte_count, actions) =
+        begin
+            obj = new(length, table_id, 0x00, match, duration_sec,
+                duration_nsec, priority, idle_timeout, hard_timeout,
+                zeros(Uint8, 6), cookie, packet_count, byte_count, actions)
+            @assert give_length(obj) == length
+            obj
+        end
 end
 @bytes OfpFlowStats
 @length OfpFlowStats

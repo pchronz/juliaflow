@@ -752,7 +752,7 @@ end
 
 # Body of reply to OFPST_FLOW request.
 immutable OfpFlowStats <: OfpStatsReplyBody
-    lengt::Uint16 # Length of this entry. XXX This variable has been renamed to
+    length::Uint16 # Length of this entry.
         # avoid a naming conflict with the function "length", which can collide
         # inside the macros
     table_id::Uint8 # ID of table flow came from.
@@ -790,9 +790,11 @@ immutable OfpAggregateStatsRequest <: OfpStatsRequestBody
     match::OfpMatch # Fields to match.
     table_id::Uint8 # ID of table to read (from ofp_table_stats). 0xff for all
         # tables or 0xfe for emergency. 
-    # pad::Uint8 Align to 32 bits.
+    pad::Uint8 # Align to 32 bits.
     out_port::Uint16 # Require matching entries to include this as an output
-        # port. A value of OFPP_ONE indicates no restriction.
+        # port. A value of OFPP_NONE indicates no restriction.
+    OfpAggregateStatsRequest(match, table_id, out_port) = new(match, table_id,
+        0x00, out_port)
 end
 @bytes OfpAggregateStatsRequest
 @length OfpAggregateStatsRequest

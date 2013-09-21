@@ -36,7 +36,7 @@ macro length(typ)
         fields = names(tayp)
         typs = tayp.types
         exs::Array{Expr} = Array(Expr, length(fields))
-        for i = 1:length(typs)
+        for i = 1:Base.length(typs)
             accex = Expr(:quote, :($(fields[i])))
             exs[i] = typs[i] <: Number ? :(len += sizeof(obj.($(accex)))) : :(len += give_length(obj.($(accex))))
         end
@@ -188,7 +188,7 @@ function bytesconstructor(t::Symbol, typ::Type, fields::Vector{Symbol},
                 if !isleaftype($(eltyp))
                     constructor = $(symbol(string(eltyp, "Factory")))
                 end
-                while pos <= length(bytes)
+                while pos <= Base.length(bytes)
                     o = constructor(bytes[pos:end])
                     arr = [arr..., o]
                     len = give_length(o)

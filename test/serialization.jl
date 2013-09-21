@@ -756,7 +756,7 @@ acttp = OfpActionTpPort(OFPAT_SET_TP_SRC, uint16(8), uint16(13))
 flowstats = OfpFlowStats(0x0080, 0x01, match, uint32(10), uint32(50), uint16(3),
     uint16(15), uint16(17), uint64(42), uint64(15), uint64(78), [actout, actven,
     acttp])
-@test flowstats.lengt == 48 + give_length(match) + reduce((l, x)->l +
+@test flowstats.length == 48 + give_length(match) + reduce((l, x)->l +
     give_length(x), 0, [actout, actven, acttp])
 @test flowstats.table_id == 1
 @test flowstats.match == match
@@ -788,7 +788,7 @@ reduce((bs, act)->append!(bs, bytes(act)), flowstatsbyts, [actout, actven, acttp
 @test bytes(flowstats) == flowstatsbyts
 # Test the deserialization.
 flowstatsdeser = OfpFlowStats(flowstatsbyts)
-@test flowstatsdeser.lengt == 48 + give_length(match) + reduce((l, x)->l +
+@test flowstatsdeser.length == 48 + give_length(match) + reduce((l, x)->l +
     give_length(x), 0, [actout, actven, acttp])
 @test flowstatsdeser.table_id == 1
 @test flowstatsdeser.match.wildcards == 0
@@ -820,28 +820,110 @@ flowstatsdeser = OfpFlowStats(flowstatsbyts)
 @test give_length(flowstatsdeser) == length(flowstatsbyts)
 
 # OfpAggregateStatsRequest
+dl_src = Array(Uint8, OFP_MAX_ETH_ALEN)
+dl_dst = Array(Uint8, OFP_MAX_ETH_ALEN)
+match = OfpMatch(uint32(0), uint16(13), dl_src, dl_dst, uint16(13), uint16(13),
+    uint16(3), uint8(1), uint8(3), uint32(13), uint32(14), uint16(3), uint16(4))
 # Test the constructor.
+aggstatreq = OfpAggregateStatsRequest(match, 0xff, OFPP_NONE)
+@test aggstatreq.match == match
+@test aggstatreq.table_id == 0xff
+@test aggstatreq.out_port == OFPP_NONE
 # Test the serialization.
+aggstatreqbyts = bytes(match)
+append!(aggstatreqbyts, b"\xff")
+append!(aggstatreqbyts, b"\x00")
+append!(aggstatreqbyts, b"\xff\xff")
+@test bytes(aggstatreq) == aggstatreqbyts
 # Test the deserialization.
+aggstatreqdeser = OfpAggregateStatsRequest(aggstatreqbyts)
+@test aggstatreqdeser.match.wildcards == 0
+@test aggstatreqdeser.match.in_port == 13
+@test aggstatreqdeser.match.dl_src == dl_src
+@test aggstatreqdeser.match.dl_dst == dl_dst
+@test aggstatreqdeser.match.dl_vlan == 13
+@test aggstatreqdeser.match.dl_vlan_pcp == 13
+@test aggstatreqdeser.match.dl_type == 3
+@test aggstatreqdeser.match.nw_tos == 1
+@test aggstatreqdeser.match.nw_proto == 3
+@test aggstatreqdeser.match.nw_src == 13
+@test aggstatreqdeser.match.nw_dst == 14
+@test aggstatreqdeser.match.tp_src == 3
+@test aggstatreqdeser.match.tp_dst == 4
+@test aggstatreq.table_id == 0xff
+@test aggstatreq.out_port == OFPP_NONE
 # Test length.
+@test give_length(aggstatreq) == length(aggstatreqbyts)
+@test give_length(aggstatreqdeser) == length(aggstatreqbyts)
 
 # OfpAggregateStatsReply
 # Test the constructor.
+aggstatrep = OfpAggregateStatsReply(uint64(3), uint64(14), uint32(13))
+@test aggstatrep.packet_count == 3
+@test aggstatrep.byte_count == 14
+@test aggstatrep.flow_count == 13
 # Test the serialization.
+aggstatrepbyts = b"\x00\x00\x00\x00\x00\x00\x00\x03"
+append!(aggstatrepbyts, b"\x00\x00\x00\x00\x00\x00\x00\x0E")
+append!(aggstatrepbyts, b"\x00\x00\x00\x0D")
+append!(aggstatrepbyts, b"\x00\x00\x00\x00")
+@test bytes(aggstatrep) == aggstatrepbyts
 # Test the deserialization.
+aggstatrepdeser = OfpAggregateStatsReply(aggstatrepbyts)
+@test aggstatrepdeser.packet_count == 3
+@test aggstatrepdeser.byte_count == 14
+@test aggstatrepdeser.flow_count == 13
 # Test length.
+@test give_length(aggstatrep) == length(aggstatrepbyts)
+@test give_length(aggstatrepdeser) == length(aggstatrepbyts)
 
 # OfpTableStats
 # Test the constructor.
+name = Array(Uint8, OFP_MAX_TABLE_NAME_LEN)
+tablstat = OfpTableStats(0x01, name, OFPFW_IN_PORT, uint32(3),
+    uint32(15), uint64(38), uint64(98))
+@test tablstat.table_id == 1
+@test tablstat.name == name
+@test tablstat.wildcards == OFPFW_IN_PORT
+@test tablstat.max_entries == 3
+@test tablstat.active_count == 15
+@test tablstat.lookup_count == 38
+@test tablstat.matched_count == 98
 # Test the serialization.
+tablstatbyts = b"\x01\x00\x00\x00"
+append!(tablstatbyts, name)
+append!(tablstatbyts, b"\x00\x00\x00\x01")
+append!(tablstatbyts, b"\x00\x00\x00\x03")
+append!(tablstatbyts, b"\x00\x00\x00\x0F")
+append!(tablstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x26")
+append!(tablstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x62")
+@test bytes(tablstat) == tablstatbyts
 # Test the deserialization.
+tablstatdeser = OfpTableStats(tablstatbyts)
+@test tablstatdeser.table_id == 1
+@test tablstatdeser.name == name
+@test tablstatdeser.wildcards == OFPFW_IN_PORT
+@test tablstatdeser.max_entries == 3
+@test tablstatdeser.active_count == 15
+@test tablstatdeser.lookup_count == 38
+@test tablstatdeser.matched_count == 98
 # Test length.
+@test give_length(tablstat) == length(tablstatbyts)
+@test give_length(tablstatdeser) == length(tablstatbyts)
 
 # OfpPortStatsRequest
 # Test the constructor.
+portstatreq = OfpPortStatsRequest(uint16(13))
+@test portstatreq.port_no == 13
 # Test the serialization.
+portstatreqbyts = b"\x00\x0D\x00\x00\x00\x00\x00\x00"
+@test bytes(portstatreq) == portstatreqbyts
 # Test the deserialization.
+portstatreqdeser = OfpPortStatsRequest(portstatreqbyts)
+@test portstatreqdeser.port_no == 13
 # Test length.
+@test give_length(portstatreq) == length(portstatreqbyts)
+@test give_length(portstatreqdeser) == length(portstatreqbyts)
 
 # OfpPortStats
 # Test the constructor.

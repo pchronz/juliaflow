@@ -927,64 +927,301 @@ portstatreqdeser = OfpPortStatsRequest(portstatreqbyts)
 
 # OfpPortStats
 # Test the constructor.
+portstat = OfpPortStats(0x0003, uint64(1), uint64(2), uint64(3), uint64(4),
+    uint64(5), uint64(6), uint64(7), uint64(8), uint64(9), uint64(10),
+    uint64(11), uint64(12))
+@test portstat.port_no == 3
+@test portstat.rx_packets == 1
+@test portstat.tx_packets == 2
+@test portstat.rx_bytes == 3
+@test portstat.tx_bytes == 4
+@test portstat.rx_dropped == 5
+@test portstat.tx_dropped == 6
+@test portstat.rx_errors == 7
+@test portstat.tx_errors == 8
+@test portstat.rx_frame_err == 9
+@test portstat.rx_over_err == 10
+@test portstat.rx_crc_err == 11
+@test portstat.collisions == 12
 # Test the serialization.
+portstatbyts = b"\x00\x03\x00\x00\x00\x00\x00\x00"
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x01")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x02")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x03")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x04")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x05")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x06")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x07")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x08")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x09")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x0A")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x0B")
+append!(portstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x0C")
+@test bytes(portstat) == portstatbyts
 # Test the deserialization.
+portstatdeser = OfpPortStats(portstatbyts)
+@test portstatdeser.port_no == 3
+@test portstatdeser.rx_packets == 1
+@test portstatdeser.tx_packets == 2
+@test portstatdeser.rx_bytes == 3
+@test portstatdeser.tx_bytes == 4
+@test portstatdeser.rx_dropped == 5
+@test portstatdeser.tx_dropped == 6
+@test portstatdeser.rx_errors == 7
+@test portstatdeser.tx_errors == 8
+@test portstatdeser.rx_frame_err == 9
+@test portstatdeser.rx_over_err == 10
+@test portstatdeser.rx_crc_err == 11
+@test portstatdeser.collisions == 12
 # Test length.
+@test give_length(portstat) == length(portstatbyts)
+@test give_length(portstatdeser) == length(portstatbyts)
 
 # OfpQueueStatsRequest
 # Test the constructor.
+qstatreq = OfpQueueStatsRequest(uint16(1), uint32(2))
+@test qstatreq.port_no == 1
+@test qstatreq.queue_id == 2
 # Test the serialization.
+qstatreqbyts = b"\x00\x01"
+append!(qstatreqbyts, b"\x00\x00")
+append!(qstatreqbyts, b"\x00\x00\x00\x02")
+@test bytes(qstatreq) == qstatreqbyts
 # Test the deserialization.
+qstatreqdeser = OfpQueueStatsRequest(qstatreqbyts)
+@test qstatreqdeser.port_no == 1
+@test qstatreqdeser.queue_id == 2
 # Test length.
+@test give_length(qstatreq) == length(qstatreqbyts)
+@test give_length(qstatreqdeser) == length(qstatreqbyts)
 
 # OfpQueueStats
 # Test the constructor.
+qstat = OfpQueueStats(uint16(1), uint32(2), uint64(3), uint64(4), uint64(5))
+@test qstat.port_no == 1
+@test qstat.queue_id == 2
+@test qstat.tx_bytes == 3
+@test qstat.tx_packets == 4
+@test qstat.tx_errors == 5
 # Test the serialization.
+qstatbyts = b"\x00\x01"
+append!(qstatbyts, b"\x00\x00")
+append!(qstatbyts, b"\x00\x00\x00\x02")
+append!(qstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x03")
+append!(qstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x04")
+append!(qstatbyts, b"\x00\x00\x00\x00\x00\x00\x00\x05")
+@test bytes(qstatbyts) == qstatbyts
 # Test the deserialization.
+qstatdeser = OfpQueueStats(qstatbyts)
+@test qstatdeser.port_no == 1
+@test qstatdeser.queue_id == 2
+@test qstatdeser.tx_bytes == 3
+@test qstatdeser.tx_packets == 4
+@test qstatdeser.tx_errors == 5
 # Test length.
+@test give_length(qstat) == length(qstatbyts)
+@test give_length(qstatdeser) == length(qstatbyts)
 
 # OfpVendorStatsRequest
 # Test the constructor.
+venstatreq = OfpVendorStatsRequest(b"\x00\x00\x00\x01", b"\x00\x02")
+@test venstatreq.vendor_id == b"\x00\x00\x00\x01"
+@test venstatreq.body == b"\x00\x02"
 # Test the serialization.
+venstatreqbyts = b"\x00\x00\x00\x01\x00\x02"
+@test bytes(venstatreq) == venstatreqbyts
 # Test the deserialization.
+venstatreqdeser = OfpVendorStatsRequest(venstatreqbyts)
+@test venstatreqdeser.vendor_id == b"\x00\x00\x00\x01"
+@test venstatreqdeser.body == b"\x00\x02"
 # Test length.
+@test give_length(venstatreq) == length(venstatreqbyts)
+@test give_length(venstatreqdeser) == length(venstatreqbyts)
 
 # OfpVendorStatsReply
 # Test the constructor.
+venstatrep = OfpVendorStatsReply(b"\x00\x00\x00\x01", b"\x00\x02")
+@test venstatrep.vendor_id == b"\x00\x00\x00\x01"
+@test venstatrep.body == b"\x00\x02"
 # Test the serialization.
+venstatrepbyts = b"\x00\x00\x00\x01\x00\x02"
+@test bytes(venstatrep) == venstatrepbyts
 # Test the deserialization.
+venstatrepdeser = OfpVendorStatsReply(venstatrepbyts)
+@test venstatrepdeser.vendor_id == b"\x00\x00\x00\x01"
+@test venstatrepdeser.body == b"\x00\x02"
 # Test length.
+@test give_length(venstatrep) == length(venstatrepbyts)
+@test give_length(venstatrepdeser) == length(venstatrepbyts)
 
-# 40
 # OfpStatsRequest
+header = OfpHeader(OFPT_STATS_REQUEST, uint16(18))
+venstatreq = OfpVendorStatsRequest(b"\x00\x00\x00\x01", b"\x00\x02")
 # Test the constructor.
+statreq = OfpStatsRequest{OfpVendorStatsRequest}(header, OFPST_VENDOR, uint16(13),
+    venstatreq)
+@test statreq.header == header
+@test statreq.typ == OFPST_VENDOR
+@test statreq.flags == 13
+@test statreq.body == venstatreq
 # Test the serialization.
+statreqbyts = bytes(header)
+append!(statreqbyts, b"\xff\xff")
+append!(statreqbyts, b"\x00\x0D")
+append!(statreqbyts, bytes(venstatreq))
+@test bytes(statreq) == statreqbyts
 # Test the deserialization.
+statreqdeser = OfpStatsRequest(header, statreqbyts[9:end])
+@test statreqdeser.header == header
+@test statreqdeser.typ == OFPST_VENDOR
+@test statreqdeser.flags == 13
+@test statreqdeser.body.vendor_id == b"\x00\x00\x00\x01"
+@test statreqdeser.body.body == b"\x00\x02"
 # Test length.
+@test give_length(statreq) == length(statreqbyts)
+@test give_length(statreqdeser) == length(statreqbyts)
 
 # OfpStatsReply
+header = OfpHeader(OFPT_STATS_REPLY, uint16(18))
+venstatrep = OfpVendorStatsReply(b"\x00\x00\x00\x01", b"\x00\x02")
 # Test the constructor.
+statrep = OfpStatsReply{OfpVendorStatsReply}(header, OFPST_VENDOR, uint16(13), venstatrep)
+@test statrep.header == header
+@test statrep.typ == OFPST_VENDOR
+@test statrep.flags == 13
+@test statrep.body == venstatrep
 # Test the serialization.
+statrepbyts = bytes(header)
+append!(statrepbyts, b"\xff\xff")
+append!(statrepbyts, b"\x00\x0D")
+append!(statrepbyts, bytes(venstatrep))
+@test bytes(statrep) == statrepbyts
 # Test the deserialization.
+statrepdeser = OfpStatsReply(header, statrepbyts[9:end])
+@test statrepdeser.header == header
+@test statrepdeser.typ == OFPST_VENDOR
+@test statrepdeser.flags == 13
+@test statrepdeser.body.vendor_id == b"\x00\x00\x00\x01"
+@test statrepdeser.body.body == b"\x00\x02"
 # Test length.
+@test give_length(statrep) == length(statrepbyts)
+@test give_length(statrepdeser) == length(statrepbyts)
 
 # OfpPacketOut
+actout = OfpActionOutput(OFPAT_OUTPUT, uint16(8), uint16(3), uint16(64))
+actven = OfpActionVendor(OFPAT_VENDOR, uint16(24), uint32(63), ones(Uint8, 16))
+acttp = OfpActionTpPort(OFPAT_SET_TP_SRC, uint16(8), uint16(13))
+actlen = mapreduce(give_length, +, [actout, actven, acttp])
+header = OfpHeader(OFPT_PACKET_OUT, uint16(16 + actlen))
 # Test the constructor.
+packout = OfpPacketOut(header, uint32(15), uint16(16), uint16(actlen), [actout,
+    actven, acttp])
+@test packout.header == header
+@test packout.buffer_id == 15
+@test packout.in_port == 16
+@test packout.actions_len == actlen
+@test packout.actions[1] == actout
+@test packout.actions[2] == actven
+@test packout.actions[3] == acttp
 # Test the serialization.
+packoutbyts = bytes(header)
+append!(packoutbyts, b"\x00\x00\x00\x0F")
+append!(packoutbyts, b"\x00\x10")
+append!(packoutbyts, b"\x00\x28")
+packoutbyts = reduce((bs, act)->append!(bs, bytes(act)), packoutbyts, [actout, actven, acttp])
+@test bytes(packout) == packoutbyts
 # Test the deserialization.
+packoutdeser = OfpPacketOut(header, packoutbyts[9:end])
+@test packoutdeser.header == header
+@test packoutdeser.buffer_id == 15
+@test packoutdeser.in_port == 16
+@test packoutdeser.actions_len == actlen
+@test bytes(packout.actions[1]) == bytes(actout)
+@test bytes(packout.actions[2]) == bytes(actven)
+@test bytes(packout.actions[3]) == bytes(acttp)
 # Test length.
+@test give_length(packout) == length(packoutbyts)
+@test give_length(packoutdeser) == length(packoutbyts)
 
 # OfpFlowRemoved
+dl_src = Array(Uint8, OFP_MAX_ETH_ALEN)
+dl_dst = Array(Uint8, OFP_MAX_ETH_ALEN)
+match = OfpMatch(uint32(0), uint16(13), dl_src, dl_dst, uint16(13), uint16(13),
+    uint16(3), uint8(1), uint8(3), uint32(13), uint32(14), uint16(3), uint16(4))
+header = OfpHeader(OFPT_FLOW_REMOVED, uint16(48 + give_length(match)))
 # Test the constructor.
+florem = OfpFlowRemoved(header, match, uint64(1), uint16(1), OFPRR_IDLE_TIMEOUT,
+    uint32(10), uint32(10), uint16(15), uint64(13), uint64(26))
+@test florem.header == header
+@test florem.match == match
+@test florem.cookie == 1
+@test florem.priority == 1
+@test florem.reason == OFPRR_IDLE_TIMEOUT
+@test florem.duration_sec == 10
+@test florem.duration_nsec == 10
+@test florem.idle_timeout == 15
+@test florem.packet_count == 13
+@test florem.byte_count == 26
 # Test the serialization.
+florembyts = bytes(header)
+append!(florembyts, bytes(match))
+append!(florembyts, b"\x00\x00\x00\x00\x00\x00\x00\x01")
+append!(florembyts, b"\x00\x01")
+append!(florembyts, b"\x00\x00")
+append!(florembyts, b"\x00\x00\x00\x0A")
+append!(florembyts, b"\x00\x00\x00\x0A")
+append!(florembyts, b"\x00\x0F\x00\x00")
+append!(florembyts, b"\x00\x00\x00\x00\x00\x00\x00\x0D")
+append!(florembyts, b"\x00\x00\x00\x00\x00\x00\x00\x1A")
+@test bytes(florem) == florembyts
 # Test the deserialization.
+floremdeser = OfpFlowRemoved(header, florembyts[9:end])
+@test floremdeser.header == header
+@test floremdeser.match.wildcards == 0
+@test floremdeser.match.in_port == 13
+@test floremdeser.match.dl_src == dl_src
+@test floremdeser.match.dl_dst == dl_dst
+@test floremdeser.match.dl_vlan == 13
+@test floremdeser.match.dl_vlan_pcp == 13
+@test floremdeser.match.dl_type == 3
+@test floremdeser.match.nw_tos == 1
+@test floremdeser.match.nw_proto == 3
+@test floremdeser.match.nw_src == 13
+@test floremdeser.match.nw_dst == 14
+@test floremdeser.match.tp_src == 3
+@test floremdeser.match.tp_dst == 4
+@test floremdeser.cookie == 1
+@test floremdeser.priority == 1
+@test floremdeser.reason == OFPRR_IDLE_TIMEOUT
+@test floremdeser.duration_sec == 10
+@test floremdeser.duration_nsec == 10
+@test floremdeser.idle_timeout == 15
+@test floremdeser.packet_count == 13
+@test floremdeser.byte_count == 26
 # Test length.
+@test give_length(florem) == length(florembyts)
+@test give_length(floremdeser) == length(florembyts)
 
 # OfpVendorHeader
+header = OfpHeader(OFPT_VENDOR, uint16(16))
 # Test the constructor.
+venhed = OfpVendorHeader(header, uint32(3), b"\x11\x11\x11\x11")
+@test venhed.header == header
+@test venhed.vendor == 3
+@test venhed.body == b"\x11\x11\x11\x11"
 # Test the serialization.
+venhedbyts = bytes(header)
+append!(venhedbyts, b"\x00\x00\x00\x03")
+append!(venhedbyts, b"\x11\x11\x11\x11")
+@test bytes(venhed) == venhedbyts
 # Test the deserialization.
+venheddeser = OfpVendorHeader(header, venhedbyts[9:end])
+@test venheddeser.header == header
+@test venheddeser.vendor == 3
+@test venheddeser.body == b"\x11\x11\x11\x11"
 # Test length.
+@test give_length(venhed) == 16
+@test give_length(venheddeser) == 16
 
 println("It seems that all went fine, congratulations!")
 

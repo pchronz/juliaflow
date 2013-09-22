@@ -382,6 +382,8 @@ function OfpActionHeaderFactory(body::Bytes)
         return OfpActionVendor(body)
     elseif typ == OFPAT_STRIP_VLAN
         return OfpActionEmpty(body)
+    else
+        error("Unsupported action header type: $(typ)")
     end
 end
 function nextactionheader(body::Bytes)
@@ -930,6 +932,7 @@ immutable OfpVendorStatsReply <: OfpStatsReplyBody
     body::Bytes # The rest of the message is vendor-defined.
     OfpVendorStatsReply(vendor_id, body) = begin
         @assert length(vendor_id) == 4
+        new(vendor_id, body)
     end
 end
 @bytes OfpVendorStatsReply
@@ -970,7 +973,7 @@ function OfpStatsRequest(header::OfpHeader, body::Bytes)
     else
         error("Unsupported type $(typ) for OfpStatsRequest.")
     end
-    obj = OfpStatsRequest(header, typ, flags, bdy)
+    obj = OfpStatsRequest{typeof(bdy)}(header, typ, flags, bdy)
     @assert header.msglen == give_length(obj)
     obj
 end
@@ -1011,7 +1014,7 @@ function OfpStatsReply(header::OfpHeader, body::Bytes)
     else
         error("Unsupported type $(typ) for OfpStatsReply.")
     end
-    obj = OfpStatsReply(header, typ, flags, bdy)
+    obj = OfpStatsReply{typeof(bdy)}(header, typ, flags, bdy)
     @assert header.msglen == give_length(obj)
     obj
 end
@@ -1020,7 +1023,8 @@ end
 # Send packet (controller -> datapath).
 immutable OfpPacketOut <: OfpMessage
     header::OfpHeader
-    buffer_id::Uint32 # ID assigned by datapath (-1 if none).
+    buffer_id::Uint32 # ID assigned by datapath (-1 if none). XXX Short quizzy:
+    # How do you assign a value of -1 to an unsigned integer type?
     in_port::Uint16 # Packet's input port (OFPP_NONE if none).
     actions_len::Uint16 # Size of action array in bytes.
     actions::Vector{OfpActionHeader} # Actions.
@@ -1069,6 +1073,8 @@ end
 
 # Vendor extension.
 # ofp_vendor_header
+# TODO Make this a parametric type, with the body value being of the parameter
+# type.
 immutable OfpVendorHeader <: OfpMessage
     header::OfpHeader # Type OFPT_VENDOR
     vendor::Uint32 # Vendor ID:

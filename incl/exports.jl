@@ -230,5 +230,8 @@ export
     # functions
     give_length,
     string,
-    bytes
+    bytes,
+
+    # API
+    start_server
 

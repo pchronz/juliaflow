@@ -13,8 +13,8 @@ type OfpHeader <: OfpStruct
     msglen::Uint16
     msgidx::Uint32
 end
-OfpHeader(msgtype::Uint8, msglen::Uint16, msgidx::Uint32=0x00000000) = OfpHeader(0x01,
-    msgtype, msglen, msgidx)
+OfpHeader(msgtype, msglen, msgidx::Uint32=0x00000000) = OfpHeader(0x01,
+    convert(Uint8, msgtype), convert(Uint16, msglen), convert(Uint32, msgidx))
 @bytes OfpHeader
 @length OfpHeader
 @string OfpHeader
@@ -311,8 +311,6 @@ immutable OfpSwitchConfig <: OfpMessage
         new(header, flags, miss_send_len)
     end
 end
-#OfpSwitchConfig(header::OfpHeader, body::Bytes) =
-#                OfpSwitchConfig(header, btoui(body[1:2]), btoui(body[3:4]))
 @bytes OfpSwitchConfig
 @length OfpSwitchConfig
 @string OfpSwitchConfig

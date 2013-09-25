@@ -17,7 +17,7 @@ headerbyts = b"\x01\x00\x00\x08\x00\x00\x00\x00"
 
 # OfpQueueGetConfigRequest
 # Test the constructor.
-header = OfpHeader(OFPT_QUEUE_GET_CONFIG_REQUEST, 0x00C)
+header = OfpHeader(OFPT_QUEUE_GET_CONFIG_REQUEST)
 qgcreq = OfpQueueGetConfigRequest(header, 0xAB)
 @test qgcreq.port == 0xAB
 # Test the serialization.
@@ -98,7 +98,7 @@ pqueuedeser = OfpPacketQueue(pqueuebyts)
 @test give_length(pqueuedeser) == 32
 
 # OfpQueueGetConfigReply
-header = OfpHeader(OFPT_QUEUE_GET_CONFIG_REPLY, uint16(80))
+header = OfpHeader(OFPT_QUEUE_GET_CONFIG_REPLY)
 # Test the constructor.
 qgcreply = OfpQueueGetConfigReply(header, uint16(1), [pqueue, pqueue])
 @test qgcreply.header == header
@@ -124,7 +124,7 @@ qgcrdeser = OfpQueueGetConfigReply(header, qgcrbyts[9:end])
 @test give_length(qgcrdeser) == length(qgcrbyts)
 
 # OfpError
-header = OfpHeader(OFPT_ERROR, uint16(100))
+header = OfpHeader(OFPT_ERROR)
 # Test the constructor.
 teststr = ascii("Something went really wrong over here! I think we should do
 something about it, quickly.")
@@ -193,7 +193,7 @@ phyportdeser = OfpPhyPort(phyportbyts)
 
 # OfpSwitchFeatures
 # Test the constructor.
-header = OfpHeader(OFPT_FEATURES_REPLY, uint16(128))
+header = OfpHeader(OFPT_FEATURES_REPLY)
 phyport = OfpPhyPort(uint16(1), hw_addr, name, OFPC_FLOW_STATS, OFPPS_LINK_DOWN,
     OFPPF_10MB_HD, OFPPF_100MB_HD, OFPPF_1GB_HD, OFPPF_COPPER)
 swfeat = OfpSwitchFeatures(header, uint64(42), uint32(15), uint8(3),
@@ -230,7 +230,7 @@ swfeatdeser = OfpSwitchFeatures(header, swfeatbyts[9:end])
 @test give_length(swfeatdeser) == length(swfeatbyts)
 
 # OfpSwitchConfig
-header = OfpHeader(OFPT_GET_CONFIG_REPLY, uint16(12))
+header = OfpHeader(OFPT_GET_CONFIG_REPLY)
 # Test the constructor.
 swconf = OfpSwitchConfig(header, OFPC_FLOW_STATS, uint16(64))
 @test swconf.header == header
@@ -497,7 +497,7 @@ actvendeser = OfpActionVendor(actvenbyts)
 @test give_length(actvendeser) == 24
 
 # OfpPacketIn
-header = OfpHeader(OFPT_PACKET_IN, uint16(34))
+header = OfpHeader(OFPT_PACKET_IN)
 # Test the constructor.
 packin = OfpPacketIn(header, uint32(13), uint16(42), uint16(2), OFPR_NO_MATCH,
     zeros(Uint8, 16))
@@ -530,7 +530,7 @@ packindeser = OfpPacketIn(header, packinbyts[9:end])
 @test give_length(packindeser) == length(packinbyts)
 
 # OfpPortStatus
-header = OfpHeader(OFPT_PORT_STATUS, uint16(64))
+header = OfpHeader(OFPT_PORT_STATUS)
 # Test the constructor.
 hw_addr = Array(Uint8, OFP_MAX_ETH_ALEN)
 name = Array(Uint8, OFP_MAX_PORT_NAME_LEN)
@@ -560,7 +560,7 @@ portstatusdeser = OfpPortStatus(header, portstatusbyts[9:end])
 @test give_length(portstatusdeser) == length(portstatusbyts)
 
 # OfpFlowMod
-header = OfpHeader(OFPT_FLOW_MOD, uint16(112))
+header = OfpHeader(OFPT_FLOW_MOD)
 dl_src = Array(Uint8, OFP_MAX_ETH_ALEN)
 dl_dst = Array(Uint8, OFP_MAX_ETH_ALEN)
 match = OfpMatch(uint32(0), uint16(13), dl_src, dl_dst, uint16(13), uint16(13),
@@ -629,7 +629,7 @@ flomoddeser = OfpFlowMod(header, flomodbyts[9:end])
 @test give_length(flomoddeser) == length(flomodbyts)
 
 # OfpPortMod
-header = OfpHeader(OFPT_PORT_MOD, uint16(32))
+header = OfpHeader(OFPT_PORT_MOD)
 # Test the constructor.
 hw_addr = Array(Uint8, OFP_MAX_ETH_ALEN)
 pormod = OfpPortMod(header, uint16(11), hw_addr, OFPPC_PORT_DOWN, OFPPC_NO_STP,
@@ -662,7 +662,7 @@ pormoddeser = OfpPortMod(header, pormodbyts[9:end])
 @test give_length(pormoddeser) == length(pormodbyts)
 
 # OfpEmptyMessage
-header = OfpHeader(OFPT_STATS_REPLY, uint16(32))
+header = OfpHeader(OFPT_STATS_REPLY)
 # Test the constructor.
 empty = OfpEmptyMessage(header)
 @test empty.header == header
@@ -1055,7 +1055,7 @@ venstatrepdeser = OfpVendorStatsReply(venstatrepbyts)
 @test give_length(venstatrepdeser) == length(venstatrepbyts)
 
 # OfpStatsRequest
-header = OfpHeader(OFPT_STATS_REQUEST, uint16(18))
+header = OfpHeader(OFPT_STATS_REQUEST)
 venstatreq = OfpVendorStatsRequest(b"\x00\x00\x00\x01", b"\x00\x02")
 # Test the constructor.
 statreq = OfpStatsRequest{OfpVendorStatsRequest}(header, OFPST_VENDOR, uint16(13),
@@ -1082,7 +1082,7 @@ statreqdeser = OfpStatsRequest(header, statreqbyts[9:end])
 @test give_length(statreqdeser) == length(statreqbyts)
 
 # OfpStatsReply
-header = OfpHeader(OFPT_STATS_REPLY, uint16(18))
+header = OfpHeader(OFPT_STATS_REPLY)
 venstatrep = OfpVendorStatsReply(b"\x00\x00\x00\x01", b"\x00\x02")
 # Test the constructor.
 statrep = OfpStatsReply{OfpVendorStatsReply}(header, OFPST_VENDOR, uint16(13), venstatrep)
@@ -1112,7 +1112,7 @@ actout = OfpActionOutput(OFPAT_OUTPUT, uint16(8), uint16(3), uint16(64))
 actven = OfpActionVendor(OFPAT_VENDOR, uint16(24), uint32(63), ones(Uint8, 16))
 acttp = OfpActionTpPort(OFPAT_SET_TP_SRC, uint16(8), uint16(13))
 actlen = mapreduce(give_length, +, [actout, actven, acttp])
-header = OfpHeader(OFPT_PACKET_OUT, uint16(16 + actlen))
+header = OfpHeader(OFPT_PACKET_OUT)
 # Test the constructor.
 packout = OfpPacketOut(header, uint32(15), uint16(16), uint16(actlen), [actout,
     actven, acttp])
@@ -1148,7 +1148,7 @@ dl_src = Array(Uint8, OFP_MAX_ETH_ALEN)
 dl_dst = Array(Uint8, OFP_MAX_ETH_ALEN)
 match = OfpMatch(uint32(0), uint16(13), dl_src, dl_dst, uint16(13), uint16(13),
     uint16(3), uint8(1), uint8(3), uint32(13), uint32(14), uint16(3), uint16(4))
-header = OfpHeader(OFPT_FLOW_REMOVED, uint16(48 + give_length(match)))
+header = OfpHeader(OFPT_FLOW_REMOVED)
 # Test the constructor.
 florem = OfpFlowRemoved(header, match, uint64(1), uint16(1), OFPRR_IDLE_TIMEOUT,
     uint32(10), uint32(10), uint16(15), uint64(13), uint64(26))
@@ -1203,7 +1203,7 @@ floremdeser = OfpFlowRemoved(header, florembyts[9:end])
 @test give_length(floremdeser) == length(florembyts)
 
 # OfpVendorHeader
-header = OfpHeader(OFPT_VENDOR, uint16(16))
+header = OfpHeader(OFPT_VENDOR)
 # Test the constructor.
 venhed = OfpVendorHeader(header, uint32(3), b"\x11\x11\x11\x11")
 @test venhed.header == header

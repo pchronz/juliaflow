@@ -13,7 +13,7 @@ type OfpHeader <: OfpStruct
     msglen::Uint16
     msgidx::Uint32
 end
-OfpHeader(msgtype, msglen, msgidx::Uint32=0x00000000) = OfpHeader(0x01,
+OfpHeader(msgtype, msglen=0x0000, msgidx::Uint32=0x00000000) = OfpHeader(0x01,
     convert(Uint8, msgtype), convert(Uint16, msglen), convert(Uint32, msgidx))
 @bytes OfpHeader
 @length OfpHeader
@@ -37,8 +37,9 @@ immutable OfpQueueGetConfigRequest <: OfpMessage
     pad::Bytes # Length: 2; 32-bits alignment.
     OfpQueueGetConfigRequest(header, port) = begin
         @assert header.msgtype == OFPT_QUEUE_GET_CONFIG_REQUEST
-        @assert header.msglen == 12
-        new(header, port, zeros(Uint8, 2))
+        obj = new(header, port, zeros(Uint8, 2))
+        obj.header.msglen = 12
+        obj
     end
 end
 @length OfpQueueGetConfigRequest
@@ -66,8 +67,9 @@ immutable OfpQueuePropNone <: OfpQueueProp
     header::OfpQueuePropHeader
     function OfpQueuePropNone(header::OfpQueuePropHeader) 
         @assert header.property == OFPQT_NONE
-        @assert header.len == 8
-        new(header)
+        obj = new(header)
+        @assert obj.header.len == 8
+        obj
     end
 end
 @bytes OfpQueuePropNone
@@ -168,7 +170,7 @@ immutable OfpQueueGetConfigReply <: OfpMessage
     function OfpQueueGetConfigReply(header, port, queues)
         configreply = new(header, port, zeros(Uint8, 6), queues)
         len = give_length(configreply)
-        @assert header.msglen == len
+        configreply.header.msglen = len
         @assert header.msgtype == OFPT_QUEUE_GET_CONFIG_REPLY
         configreply
     end
@@ -189,7 +191,7 @@ immutable OfpError <: OfpMessage
     OfpError(header, typ, code, data) = begin
         @assert header.msgtype == OFPT_ERROR
         obj = new(header, typ, code, data)
-        @assert header.msglen == give_length(obj)
+        obj.header.msglen = give_length(obj)
         obj
     end
 end
@@ -289,7 +291,7 @@ immutable OfpSwitchFeatures <: OfpMessage
         actions, ports) = begin
         @assert header.msgtype == OFPT_FEATURES_REPLY
         obj = new(header, datapath_id, n_buffers, n_tables, zeros(Uint8, 3), capabilities, actions, ports)
-        @assert header.msglen == give_length(obj)
+        obj.header.msglen = give_length(obj)
         obj
     end
 end
@@ -307,8 +309,9 @@ immutable OfpSwitchConfig <: OfpMessage
     OfpSwitchConfig(header, flags, miss_send_len) = begin 
         @assert header.msgtype == OFPT_GET_CONFIG_REQUEST || header.msgtype ==
             OFPT_GET_CONFIG_REPLY
-        @assert header.msglen == 12
-        new(header, flags, miss_send_len)
+        obj = new(header, flags, miss_send_len)
+        obj.header.msglen = 12
+        obj
     end
 end
 @bytes OfpSwitchConfig
@@ -405,8 +408,9 @@ immutable OfpActionEmpty <: OfpActionHeader
                 # action, including any padding to make it 64-bit algined. 4.
     OfpActionEmpty(typ, len) = begin
         @assert typ == OFPAT_STRIP_VLAN
-        @assert len == 4
-        new(typ, len)
+        obj = new(typ, len)
+        obj.len == 4
+        obj
     end
 end
 @bytes OfpActionEmpty
@@ -422,8 +426,9 @@ immutable OfpActionOutput <: OfpActionHeader
     max_len::Uint16 # Max length to send to the controller.
     OfpActionOutput(typ, len, port, max_len) = begin
         @assert typ == OFPAT_OUTPUT
-        @assert len == 8
-        new(typ, len, port, max_len)
+        obj = new(typ, len, port, max_len)
+        @assert obj.len == 8
+        obj
     end
 end
 @bytes OfpActionOutput
@@ -435,14 +440,15 @@ immutable OfpActionEnqueue <: OfpActionHeader
     typ::Uint16 # OFPAT_ENQUEUE. 
     len::Uint16 # Length of action, including this header. This is the length of
                 # action, including any padding to make it 64-bit algined. 16.
-    port::Uint16 # Port that queue belongs to. Should refer to a vlid physical
+    port::Uint16 # Port that queue belongs to. Should refer to a valid physical
         # port (i.e. < OFPP_MAX) or OFPP_IN_PORT.
     pad::Bytes # Length: 6 bytes for 64-bit alignment
     queue_id::Uint32 # Where to enqueue the packets.
     OfpActionEnqueue(typ, len, port, queue_id) = begin
         @assert typ == OFPAT_ENQUEUE
-        @assert len == 16
-        new(typ, len, port, zeros(Uint8, 6), queue_id)
+        obj = new(typ, len, port, zeros(Uint8, 6), queue_id)
+        @assert obj.len == 16
+        obj
     end
 end
 @bytes OfpActionEnqueue
@@ -458,8 +464,9 @@ immutable OfpActionVlanVid <: OfpActionHeader
     pad::Bytes # Length: 2 bytes for 64-bit alignment
     OfpActionVlanVid(typ, len, vlan_vid) = begin
         @assert typ == OFPAT_SET_VLAN_VID
-        @assert len == 8
-        new(typ, len, vlan_vid, zeros(Uint8, 2))
+        obj = new(typ, len, vlan_vid, zeros(Uint8, 2))
+        @assert obj.len == 8
+        obj
     end
 end
 @bytes OfpActionVlanVid
@@ -475,8 +482,9 @@ immutable OfpActionVlanPcp <: OfpActionHeader
     pad::Bytes # Length: 3
     OfpActionVlanPcp(typ, len, vlan_pcp) = begin
         @assert typ == OFPAT_SET_VLAN_PCP
-        @assert len == 8
-        new(typ, len, vlan_pcp, zeros(Uint8, 3))
+        obj = new(typ, len, vlan_pcp, zeros(Uint8, 3))
+        @assert obj.len == 8
+        obj
     end
 end
 @bytes OfpActionVlanPcp
@@ -503,7 +511,9 @@ immutable OfpActionDlAddress <: OfpActionHeader
     OfpActionDlAddress(typ, len, dl_addr) = begin
         @assert typ == OFPAT_SET_DL_SRC || typ == OFPAT_SET_DL_DST
         @assert length(dl_addr) == OFP_MAX_ETH_ALEN
-        new(typ, len, dl_addr, zeros(Uint8, 6))
+        obj = new(typ, len, dl_addr, zeros(Uint8, 6))
+        @assert obj.len == give_length(obj)
+        obj
     end
 end
 @bytes OfpActionDlAddress
@@ -519,8 +529,9 @@ immutable OfpActionNwAddress <: OfpActionHeader
     nw_addr::Uint32 # IP address.
     OfpActionNwAddress(typ, len, nw_addr) = begin
         @assert typ == OFPAT_SET_NW_SRC || typ == OFPAT_SET_NW_DST
-        @assert len == 8
-        new(typ, len, nw_addr)
+        obj = new(typ, len, nw_addr)
+        @assert obj.len == 8
+        obj
     end
 end
 @bytes OfpActionNwAddress
@@ -537,8 +548,9 @@ immutable OfpActionNwTos <: OfpActionHeader
     pad::Bytes # Length 3.
     OfpActionNwTos(typ, len, nw_tos) = begin
         @assert typ == OFPAT_SET_NW_TOS
-        @assert len == 8
-        new(typ, len, nw_tos, zeros(Uint8, 3))
+        obj = new(typ, len, nw_tos, zeros(Uint8, 3))
+        @assert obj.len == 8
+        obj
     end
 end
 @bytes OfpActionNwTos
@@ -558,8 +570,9 @@ immutable OfpActionTpPort <: OfpActionHeader
             throw(WrongMessageType())
         end
         @assert typ == OFPAT_SET_TP_SRC || typ == OFPAT_SET_TP_DST
-        @assert len == 8
-        new(typ, len, tp_port, zeros(Uint8, 2))
+        obj = new(typ, len, tp_port, zeros(Uint8, 2))
+        @assert obj.len == 8
+        obj
     end
 end
 @bytes OfpActionTpPort
@@ -576,8 +589,9 @@ immutable OfpActionVendor <: OfpActionHeader
     body::Bytes # Vendor-specific extension.
     OfpActionVendor(typ, len, vendor, body::Bytes) = begin
         @assert typ == OFPAT_VENDOR
-        @assert len == 8 + length(body)
-        new(OFPAT_VENDOR, len, vendor, body)
+        obj = new(OFPAT_VENDOR, len, vendor, body)
+        @assert obj.len == 8 + length(body) 
+        obj
     end
 end
 @bytes OfpActionVendor
@@ -600,7 +614,7 @@ immutable OfpPacketIn <: OfpMessage
     OfpPacketIn(header, buffer_id, total_len, in_port, reason, data) = begin
         @assert header.msgtype == OFPT_PACKET_IN
         obj = new(header, buffer_id, total_len, in_port, reason, 0x00, data)
-        @assert header.msglen == give_length(obj)
+        obj.header.msglen = give_length(obj)
         obj
     end
 end
@@ -618,7 +632,7 @@ immutable OfpPortStatus <: OfpMessage
     OfpPortStatus(header, reason, desc) = begin
         @assert header.msgtype == OFPT_PORT_STATUS
         obj = new(header, reason, zeros(Uint8, 7), desc)
-        @assert header.msglen == give_length(obj)
+        obj.header.msglen = give_length(obj)
         obj
     end
 end
@@ -651,7 +665,7 @@ immutable OfpFlowMod <: OfpMessage
             # Create the partially initialized object.
             obj = new(header, match, cookie, command, idle_timeout, hard_timeout,
                 priority, buffer_id, out_port, flags, actions) 
-            @assert header.msglen == give_length(obj)
+            obj.header.msglen = give_length(obj)
             obj
     end
     OfpFlowMod(match, cookie, command, idle_timeout, hard_timeout,
@@ -683,7 +697,7 @@ immutable OfpPortMod <: OfpMessage
         @assert header.msgtype == OFPT_PORT_MOD
         @assert length(hw_addr) == OFP_MAX_ETH_ALEN
         obj = new(header, port_no, hw_addr, config, mask, advertise, zeros(Uint8, 4))
-        @assert header.msglen == give_length(obj)
+        obj.header.msglen = give_length(obj)
         obj
     end
 end
@@ -776,7 +790,7 @@ immutable OfpFlowStats <: OfpStatsReplyBody
             obj = new(length, table_id, 0x00, match, duration_sec,
                 duration_nsec, priority, idle_timeout, hard_timeout,
                 zeros(Uint8, 6), cookie, packet_count, byte_count, actions)
-            @assert give_length(obj) == length
+            @assert obj.length == give_length(obj)
             obj
         end
 end
@@ -947,7 +961,7 @@ immutable OfpStatsRequest{T<:OfpStatsRequestBody} <: OfpMessage
     OfpStatsRequest(header, typ, flags, body) = begin
         obj = new(header, typ, flags, body)
         @assert header.msgtype == OFPT_STATS_REQUEST
-        @assert header.msglen == give_length(obj)
+        obj.header.msglen = give_length(obj)
         obj
     end
 end
@@ -972,7 +986,7 @@ function OfpStatsRequest(header::OfpHeader, body::Bytes)
         error("Unsupported type $(typ) for OfpStatsRequest.")
     end
     obj = OfpStatsRequest{typeof(bdy)}(header, typ, flags, bdy)
-    @assert header.msglen == give_length(obj)
+    obj.header.msglen = give_length(obj)
     obj
 end
 
@@ -985,7 +999,7 @@ immutable OfpStatsReply{T<:OfpStatsReplyBody} <: OfpMessage
     OfpStatsReply(header, typ, flags, body) = begin
         @assert header.msgtype == OFPT_STATS_REPLY
         obj = new(header, typ, flags, body)
-        @assert header.msglen == give_length(obj)
+        obj.header.msglen = give_length(obj)
         obj
     end
 end
@@ -1013,7 +1027,7 @@ function OfpStatsReply(header::OfpHeader, body::Bytes)
         error("Unsupported type $(typ) for OfpStatsReply.")
     end
     obj = OfpStatsReply{typeof(bdy)}(header, typ, flags, bdy)
-    @assert header.msglen == give_length(obj)
+    obj.header.msglen = give_length(obj)
     obj
 end
 
@@ -1021,8 +1035,8 @@ end
 # Send packet (controller -> datapath).
 immutable OfpPacketOut <: OfpMessage
     header::OfpHeader
-    buffer_id::Uint32 # ID assigned by datapath (-1 if none). XXX Short quizzy:
-    # How do you assign a value of -1 to an unsigned integer type?
+    buffer_id::Uint32 # ID assigned by datapath (-1 if none). XXX Short quiz
+        # question: How do you assign a value of -1 to an unsigned integer type?
     in_port::Uint16 # Packet's input port (OFPP_NONE if none).
     actions_len::Uint16 # Size of action array in bytes.
     actions::Vector{OfpActionHeader} # Actions.
@@ -1030,7 +1044,7 @@ immutable OfpPacketOut <: OfpMessage
     OfpPacketOut(header, buffer_id, in_port, actions_len, actions) = begin
         @assert header.msgtype == OFPT_PACKET_OUT
         obj = new(header, buffer_id, in_port, actions_len, actions)
-        @assert header.msglen == give_length(obj)
+        obj.header.msglen = give_length(obj)
         obj
     end
 end
@@ -1060,7 +1074,7 @@ immutable OfpFlowRemoved <: OfpMessage
         @assert header.msgtype == OFPT_FLOW_REMOVED
         obj = new(header, match, cookie, priority, reason, 0x00, duration_sec,
             duration_nsec, idle_timeout, zeros(Uint8, 2), packet_count, byte_count)
-        @assert header.msglen == give_length(obj)
+        obj.header.msglen = give_length(obj)
         obj
     end
 end
@@ -1081,8 +1095,9 @@ immutable OfpVendorHeader <: OfpMessage
     body::Bytes # Vendor-defined arbitrary additional data.
     OfpVendorHeader(header, vendor, body) = begin
         @assert header.msgtype == OFPT_VENDOR
-        @assert header.msglen == 12 + length(body)
-        new(header, vendor, body)
+        obj = new(header, vendor, body)
+        obj.header.msglen = 12 + length(body)
+        obj
     end
 end
 @bytes OfpVendorHeader

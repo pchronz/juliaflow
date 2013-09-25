@@ -231,6 +231,7 @@ export
     give_length,
     string,
     bytes,
+    btoui,
 
     # API
     start_server

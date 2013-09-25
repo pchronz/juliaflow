@@ -28,6 +28,7 @@ bytes(byts::Bytes) = byts
 function bytes(ui::Uint8)
     [ui]
 end
+bytes(s::ASCIIString) = Uint8[int(c) for c in s]
 function bytes(ui::Uint16)
     byts = zeros(Uint8, 2)
     byts[1] = uint8(ui >> 8)
@@ -127,27 +128,29 @@ function btoui(bytes::Bytes)
     ntoh(ui)
 end
 
-function start_server(msghandler, port = 6633)
+function start_server(msghandler::Function, port = 6633)
 	server = listen(port)
 	@async begin
 		while true
 			socket = accept(server)
 			@async begin
-                while true
-                    # read the header
-                    header::OfpHeader = readofpheader(socket)
-                    # read the body
-                    msgbody = read(socket, Uint8, header.msglen - 8)
-                    # TODO Probably we should create another task per read
-                    # message here. Actually this task should run in another
-                    # process, assemble the message, prepare the responses and
-                    # return here. 
-                    # assemble the corresponding message
-                    message::OfpMessage = assemblemessage(header, msgbody)
-                    # handle the message
-                    responses = msghandler(message)
-                    for r in responses
-                        write(socket, bytes(r))
+                let socket = socket
+                    while true
+                        # read the header
+                        header::OfpHeader = readofpheader(socket)
+                        # read the body
+                        msgbody = read(socket, Uint8, header.msglen - 8)
+                        # TODO Probably we should create another task per read
+                        # message here. Actually this task should run in another
+                        # process, assemble the message, prepare the responses and
+                        # return here. 
+                        # assemble the corresponding message
+                        message::OfpMessage = assemblemessage(header, msgbody)
+                        # handle the message
+                        responses = msghandler(message, socket)
+                        for r in responses
+                            write(socket, bytes(r))
+                        end
                     end
                 end
 			end

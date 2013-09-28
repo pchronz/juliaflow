@@ -1,4 +1,15 @@
 module OpenFlow
+# TODO Self-regulate and skip message when the buffer runs full. Use
+# subsampling. Try out multiple escalation levels:
+#   - write to file (probably senseless: timeouts and it takes too long to
+#   write),
+#   - read the buffer, but do not process it for a certain sub-sampling rate,
+#   - decrease the sub-sampling rate,
+#   - just clear the current buffer and continue with whatever comes in next
+#   when SHTF. For this to work you need to write a routine to jump in randomly
+#   in a stream and get the header.
+# TODO Write a macro that prints infos only in debug mode.
+# TODO Run without REPL.
 # TODO Parallel version.
 # TODO Controller-initiated messages.
 # TODO Use the improved bytesconstructor macro on the types that require
@@ -117,45 +128,93 @@ end
 # XXX there must be something like this somewhere in Julia's API
 # utility functions for assembling bytes to Uints
 # TODO how about writing "convert" methods for this?
-function btoui(bytes::Bytes)
-    blen = length(bytes)
-    # Why? Because I can. The ternary operator is right associative btw.
-    ui = blen == 1 ? bytes[1] : blen == 2 ? uint16(0) : blen == 4 ?
-        uint32(0) : blen == 8 ? uint64(0) : throw(UnexpectedIntLength())
-    for i = 1:blen
-        ui |= convert(typeof(ui), bytes[i]) << 8(i-1)
-    end
-    ntoh(ui)
+function btoui(b1::Uint8, b2::Uint8, b3::Uint8, b4::Uint8, b5::Uint8, b6::Uint8,
+    b7::Uint8, b8::Uint8)
+    ui::Uint64 = uint64(0)
+    ui |= b1
+    ui = ui << 8
+    ui |= b2
+    ui = ui << 8
+    ui |= b3
+    ui = ui << 8
+    ui |= b4
+    ui = ui << 8
+    ui |= b5
+    ui = ui << 8
+    ui |= b6
+    ui = ui << 8
+    ui |= b7
+    ui = ui << 8
+    ui |= b8
+    ui
 end
+function btoui(b1::Uint8, b2::Uint8, b3::Uint8, b4::Uint8)
+    ui::Uint32 = uint32(0)
+    ui |= b1
+    ui = ui << 8
+    ui |= b2
+    ui = ui << 8
+    ui |= b3
+    ui = ui << 8
+    ui |= b4
+    ui
+end
+function btoui(b1::Uint8, b2::Uint8)
+    ui::Uint16 = uint16(0)
+    ui |= b1
+    ui = ui << 8
+    ui |= b2
+    ui
+end
+btoui(b1::Uint8) = b1
+#btoui(bs::Bytes) = btoui(bs...)
+#function btoui(bytes::Bytes)
+#    blen = length(bytes)
+#    # Why? Because I can. The ternary operator is right associative btw.
+#    ui = blen == 1 ? bytes[1] : blen == 2 ? uint16(0) : blen == 4 ?
+#        uint32(0) : blen == 8 ? uint64(0) : throw(UnexpectedIntLength())
+#    for i = 1:blen
+#        # XXX perf
+#        ui |= convert(typeof(ui), bytes[i]) << 8(i-1)
+#    end
+#    ntoh(ui)
+#end
 
 function start_server(msghandler::Function, port = 6633)
+    info("Starting Julia SDN server.")
 	server = listen(port)
-	@async begin
-		while true
-			socket = accept(server)
-			@async begin
-                let socket = socket
-                    while true
-                        # read the header
-                        header::OfpHeader = readofpheader(socket)
-                        # read the body
-                        msgbody = read(socket, Uint8, header.msglen - 8)
-                        # TODO Probably we should create another task per read
-                        # message here. Actually this task should run in another
-                        # process, assemble the message, prepare the responses and
-                        # return here. 
-                        # assemble the corresponding message
-                        message::OfpMessage = assemblemessage(header, msgbody)
-                        # handle the message
-                        responses = msghandler(message, socket)
-                        for r in responses
-                            write(socket, bytes(r))
+    @sync begin
+        @async begin
+            while true
+                socket = accept(server)
+                socket.line_buffered = false
+                info("Created a new socket.")
+                @async begin
+                    @profile begin
+                        let socket = socket
+                            while true
+                                # read the header
+                                header::OfpHeader = readofpheader(socket)
+                                # read the body
+                                msgbody = read(socket, Uint8, header.msglen - 8)
+                                # TODO Probably we should create another task per read
+                                # message here. Actually this task should run in another
+                                # process, assemble the message, prepare the responses and
+                                # return here. 
+                                # assemble the corresponding message
+                                message::OfpMessage = assemblemessage(header, msgbody)
+                                # handle the message
+                                responses = msghandler(message, socket)
+                                for r in responses
+                                    write(socket, bytes(r))
+                                end
+                            end
                         end
                     end
                 end
-			end
-		end
-	end
+            end
+        end
+    end
 end
 
 include("incl/exports.jl")

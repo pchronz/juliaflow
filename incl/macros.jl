@@ -60,14 +60,15 @@ macro bytes(typ)
         ex = Expr(:., :obj, Expr(:quote, fields[i]))
         exs[i] = quote
             bs = bytes($ex)
-            byts[pos:pos + length(bs) - 1] = bs
-            pos += length(bs)
+            bs_len = length(bs)
+            byts[pos:pos + bs_len - 1] = bs
+            pos += bs_len
         end
     end
     quote
         function $(esc(:bytes))(obj::$(typ))
             objsize = give_length(obj)
-            byts::Bytes = zeros(Uint8, objsize)
+            byts::Bytes = Array(Uint8, objsize)
             bs::Bytes
             pos::Integer = 1
             $(exs...)
@@ -129,7 +130,6 @@ function bytesconstructor(t::Symbol, typ::Type, fields::Vector{Symbol},
         # Padding fields are set by the constructors. We do not have any access
         # to those fields from here.
         # The OfpHeader needs to be created by the inner constructor implicitly.
-        len::Integer
         ex::Expr
         if ismatch(r"^pad.*", string(fields[i]))
             if typs[i] <: Number
@@ -139,22 +139,47 @@ function bytesconstructor(t::Symbol, typ::Type, fields::Vector{Symbol},
             else
                 error("Unrecognized type for padding.")
             end
-        elseif typs[i] <: Number
-            len = sizeof(typs[i])
+        elseif typs[i] == Uint8
             ex = quote
-                val = btoui(bytes[pos:pos + $(len) - 1])
+                val = bytes[pos]
                 local $(fields[i]) = val
-                fieldvals = {fieldvals..., val}
-                pos += $(len)
+                field_len += 1
+                fieldvals[field_len] = val
+                pos += 1
+            end
+        elseif typs[i] == Uint16
+            ex = quote
+                val = btoui(bytes[pos], bytes[pos + 1])
+                local $(fields[i]) = val
+                field_len += 1
+                fieldvals[field_len] = val
+                pos += 2
+            end
+        elseif typs[i] == Uint32
+            ex = quote
+                val = btoui(bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3])
+                local $(fields[i]) = val
+                field_len += 1
+                fieldvals[field_len] = val
+                pos += 4
+            end
+        elseif typs[i] == Uint64
+            ex = quote
+                val = btoui(bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3], bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7])
+                local $(fields[i]) = val
+                field_len += 1
+                fieldvals[field_len] = val
+                pos += 8
             end
         elseif typs[i] == OfpHeader
             hasheader = true
-            ex = :(fieldvals = [fieldvals..., header])
+            ex = :((field_len += 1; fieldvals[field_len] = header))
         elseif typs[i] <: OfpStruct
             ex = quote
                 o = $(typs[i])(bytes[pos:end])
                 isa(o, $(typs[i]))
-                fieldvals = {fieldvals..., o}
+                field_len += 1
+                fieldvals[field_len] = o
                 pos += give_length(o)
             end
         elseif typs[i] <: Bytes
@@ -168,7 +193,8 @@ function bytesconstructor(t::Symbol, typ::Type, fields::Vector{Symbol},
                 error("Cannot process a byte array of unknown length if it is not the last field!")
             end
             ex = quote
-                append!(fieldvals, {bytes[pos:$(lenex)]})
+                field_len += 1
+                fieldvals[field_len] = bytes[pos:$(lenex)]
                 pos = $(lenex) + 1
             end
         elseif typs[i] <: Array
@@ -194,7 +220,8 @@ function bytesconstructor(t::Symbol, typ::Type, fields::Vector{Symbol},
                     len = give_length(o)
                     pos += len
                 end
-                fieldvals = append!(fieldvals, {arr})
+                field_len += 1
+                fieldvals[field_len] = arr
             end
         end
         exs = [exs..., ex]
@@ -204,10 +231,11 @@ function bytesconstructor(t::Symbol, typ::Type, fields::Vector{Symbol},
     quote
         function $(esc(t))($(args...))
             # Values of the fields to be passed in to the inner constructor
-            fieldvals::Vector{Any} = {}
+            fieldvals = cell(16)
+            field_len = 0
             pos = 1
             $(exs...)
-            $(t)(fieldvals...)
+            $(t)(fieldvals[1:field_len]...)
         end
     end
 end

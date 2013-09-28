@@ -55,7 +55,7 @@ immutable OfpQueuePropHeader <: OfpStruct
     property::Uint16 # One of OFPQT_*.
     len::Uint16 # Length of property, including this header.
     pad::Bytes # Length: 4; 64-bit alignment.
-    OfpQueuePropHeader(prop::Uint16, len::Uint16) = new(prop, len, zeros(Uint8,
+    OfpQueuePropHeader(prop, len) = new(prop, len, zeros(Uint8,
         4))
 end
 @bytes OfpQueuePropHeader
@@ -113,7 +113,7 @@ immutable OfpQueuePropMinRate <: OfpQueueProp
     header::OfpQueuePropHeader # prop: OFPQT_MIN_RATE, len: 16.
     rate::Uint16 # In 1/10 of a percent; >1000 -> disabled.
     pad::Bytes # Length 6; 64-bit alginment.
-    OfpQueuePropMinRate(header, rate::Uint16) = begin
+    OfpQueuePropMinRate(header, rate) = begin
         @assert header.property == OFPQT_MIN_RATE
         new(header, rate, zeros(Uint8, 6))
     end
@@ -138,8 +138,7 @@ immutable OfpPacketQueue <: OfpStruct
     properties::Vector{OfpQueueProp} # List of properties. XXX The spec lists
         # OfpQueuePropHeader as type of properties. Probably however the list is
         # not supposed to only contain the headers but also the full properties. 
-    OfpPacketQueue(queue_id::Uint32, len::Uint16,
-        properties::Vector{OfpQueueProp}) = begin
+    OfpPacketQueue(queue_id, len, properties::Vector{OfpQueueProp}) = begin
             obj = new(queue_id, len, zeros(Uint8, 2), properties)
             @assert len == give_length(obj)
             obj
@@ -149,8 +148,8 @@ end
 @bytes OfpPacketQueue
 @string OfpPacketQueue
 function OfpPacketQueue(body::Bytes)
-    queue_id = btoui(body[1:4])
-    len = btoui(body[5:6])
+    queue_id = btoui(body[1], body[2], body[3], body[4])
+    len = btoui(body[5], body[6])
     OfpPacketQueue(queue_id, len, OfpQueueProps(body[9:len]))
 end
 
@@ -362,7 +361,7 @@ abstract OfpActionHeader <: OfpStruct
     # special types. => rename all give_length methods to be methods of
     # Base.length or whichever the standard length function is.
 function OfpActionHeaderFactory(body::Bytes)
-    typ::Uint16 = btoui(body[1:2])
+    typ::Uint16 = btoui(body[1], body[2])
     if typ == OFPAT_OUTPUT
         return OfpActionOutput(body)
     elseif typ == OFPAT_ENQUEUE
@@ -388,7 +387,7 @@ function OfpActionHeaderFactory(body::Bytes)
     end
 end
 function nextactionheader(body::Bytes)
-    len = btoui(body[3:4])
+    len = btoui(body[3], body[4])
     (OfpActionHeaderFactory(body[1:len]), length(body) > len ? body[len + 1:end]
         : nothing)
 end
@@ -614,12 +613,14 @@ immutable OfpPacketIn <: OfpMessage
     OfpPacketIn(header, buffer_id, total_len, in_port, reason, data) = begin
         @assert header.msgtype == OFPT_PACKET_IN
         obj = new(header, buffer_id, total_len, in_port, reason, 0x00, data)
-        obj.header.msglen = give_length(obj)
+        obj.header.msglen = 8 + 10 + length(data)
         obj
     end
 end
 @bytes OfpPacketIn
-@length OfpPacketIn
+# perf
+#@length OfpPacketIn
+give_length(pi::OfpPacketIn) = 8 + 10 + length(pi.data)
 @string OfpPacketIn
 @bytesconstructor OfpPacketIn
 
@@ -970,8 +971,8 @@ end
 @string OfpStatsRequest
 function OfpStatsRequest(header::OfpHeader, body::Bytes)
     @assert header.msgtype == OFPT_STATS_REQUEST
-    typ::Uint16 = btoui(body[1:2])
-    flags::Uint16 = btoui(body[3:4])
+    typ::Uint16 = btoui(body[1], body[2])
+    flags::Uint16 = btoui(body[3], body[4])
     if typ == OFPST_FLOW
         bdy = OfpFlowStatsRequest(body[5:end])
     elseif typ == OFPST_AGGREGATE
@@ -1007,8 +1008,8 @@ end
 @length OfpStatsReply
 @string OfpStatsReply
 function OfpStatsReply(header::OfpHeader, body::Bytes)
-    typ::Uint16 = btoui(body[1:2])
-    flags::Uint16 = btoui(body[3:4])
+    typ::Uint16 = btoui(body[1], body[2])
+    flags::Uint16 = btoui(body[3], body[4])
     if typ == OFPST_DESC
         bdy = OfpDescStats(body[5:end])
     elseif typ == OFPST_FLOW
@@ -1049,7 +1050,8 @@ immutable OfpPacketOut <: OfpMessage
     end
 end
 @bytes OfpPacketOut
-@length OfpPacketOut
+#@length OfpPacketOut
+give_length(po::OfpPacketOut) = 8 + 8 + reduce((l, a)->l + give_length(a), 0, po.actions)
 @string OfpPacketOut
 @bytesconstructor OfpPacketOut
 

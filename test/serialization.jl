@@ -3,6 +3,9 @@ using Base.Test
 require("../of-controller.jl")
 using OpenFlow
 
+info("Starting tests...")
+tic()
+
 # OfpHeader
 # Test the constructor.
 header = OfpHeader(OFPT_HELLO, uint16(8))
@@ -1223,5 +1226,6 @@ venheddeser = OfpVendorHeader(header, venhedbyts[9:end])
 @test give_length(venhed) == 16
 @test give_length(venheddeser) == 16
 
+toc()
 println("It seems that all went fine, congratulations!")
 

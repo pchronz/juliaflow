@@ -9,7 +9,6 @@ module OpenFlow
 #   when SHTF. For this to work you need to write a routine to jump in randomly
 #   in a stream and get the header.
 # TODO Write a macro that prints infos only in debug mode.
-# TODO Run without REPL.
 # TODO Parallel version.
 # TODO Controller-initiated messages.
 # TODO Use the improved bytesconstructor macro on the types that require
@@ -73,23 +72,45 @@ include("incl/ofptypes.jl")
 
 function assemblemessage(header::OfpHeader, body::Bytes)
     if header.msgtype == OFPT_HELLO
-        assert(length(body) == 0)
-        return OfpEmptyMessage(header)
+        if length(body) != 0 
+            return nothing
+        else
+            return OfpEmptyMessage(header)
+        end
     elseif header.msgtype == OFPT_ERROR
         return OfpError(header, body)
     elseif header.msgtype == OFPT_ECHO_REQUEST
-        assert(length(body) == 0)
-        return OfpEmptyMessage(header)
+        if length(body) != 0 
+            return nothing
+        else
+            return OfpEmptyMessage(header)
+        end
     elseif header.msgtype == OFPT_ECHO_REPLY
-        return OfpEmptyMessage(header)
+        if length(body) != 0 
+            return nothing
+        else
+            return OfpEmptyMessage(header)
+        end
     elseif header.msgtype == OFPT_VENDOR
-        return OfpVendorHeader(header, body)
+        if length(body) != 0 
+            return nothing
+        else
+            return OfpVendorHeader(header, body)
+        end
     elseif header.msgtype == OFPT_FEATURES_REQUEST
-        return OfpEmptyMessage(header)
+        if length(body) != 0 
+            return nothing
+        else
+            return OfpEmptyMessage(header)
+        end
     elseif header.msgtype == OFPT_FEATURES_REPLY
         return OfpSwitchFeatures(header, body)
     elseif header.msgtype == OFPT_GET_CONFIG_REQUEST
-        return OfpEmptyMessage(header)
+        if length(body) != 0 
+            return nothing
+        else
+            return OfpEmptyMessage(header)
+        end
     elseif header.msgtype == OFPT_GET_CONFIG_REPLY
         return OfpSwitchConfig(header, body)
     elseif header.msgtype == OFPT_SET_CONFIG
@@ -111,15 +132,23 @@ function assemblemessage(header::OfpHeader, body::Bytes)
     elseif header.msgtype == OFPT_STATS_REPLY
         return OfpStatsReply(header, body)
     elseif header.msgtype == OFPT_BARRIER_REQUEST
-        return OfpEmptyMessage(header)
+        if length(body) != 0 
+            return nothing
+        else
+            return OfpEmptyMessage(header)
+        end
     elseif header.msgtype == OFPT_BARRIER_REPLY
-        return OfpEmptyMessage(header)
+        if length(body) != 0 
+            return nothing
+        else
+            return OfpEmptyMessage(header)
+        end
     elseif header.msgtype == OFPT_QUEUE_GET_CONFIG_REQUEST
         return OfpQueueGetConfigRequest(header, body)
     elseif header.msgtype == OFPT_QUEUE_GET_CONFIG_REPLY
         return OfpQueueGetConfigReply(header, body)
     else
-        warn("Got an unrecognized message of type $(header.msgtype).")
+        return nothing
     end
 end
 
@@ -167,22 +196,30 @@ function btoui(b1::Uint8, b2::Uint8)
     ui
 end
 btoui(b1::Uint8) = b1
-#btoui(bs::Bytes) = btoui(bs...)
-#function btoui(bytes::Bytes)
-#    blen = length(bytes)
-#    # Why? Because I can. The ternary operator is right associative btw.
-#    ui = blen == 1 ? bytes[1] : blen == 2 ? uint16(0) : blen == 4 ?
-#        uint32(0) : blen == 8 ? uint64(0) : throw(UnexpectedIntLength())
-#    for i = 1:blen
-#        # XXX perf
-#        ui |= convert(typeof(ui), bytes[i]) << 8(i-1)
-#    end
-#    ntoh(ui)
-#end
+
+function seek_next_header(sock::TcpSocket)
+    v::Uint8 = 0xff
+    while true
+        v = read(sock, Uint8, 1)[1]
+        if v == 0x01
+            t = read(sock, Uint8, 1)[1]
+            if 0x00 <= t <= 0x15
+                l = ntoh(read(sock, Uint16, 1)[1])
+                if l >= 0x0008
+                    i = ntoh(read(sock, Uint32, 1)[1])
+                    return OfpHeader(v, t, l, i)
+                end
+            end
+        end
+    end
+end
 
 function start_server(msghandler::Function, port = 6633)
-    info("Starting Julia SDN server.")
+    info("Julia SDN server is up and running.")
 	server = listen(port)
+    # XXX Probably it would be a good idead to set this dynamically based on the
+    # number of sockets and the amount of available memory.
+    max_buf = 1024*1024*8
     @sync begin
         @async begin
             while true
@@ -190,24 +227,32 @@ function start_server(msghandler::Function, port = 6633)
                 socket.line_buffered = false
                 info("Created a new socket.")
                 @async begin
-                    @profile begin
+                    begin
                         let socket = socket
                             while true
-                                # read the header
-                                header::OfpHeader = readofpheader(socket)
-                                # read the body
-                                msgbody = read(socket, Uint8, header.msglen - 8)
-                                # TODO Probably we should create another task per read
-                                # message here. Actually this task should run in another
-                                # process, assemble the message, prepare the responses and
-                                # return here. 
-                                # assemble the corresponding message
-                                message::OfpMessage = assemblemessage(header, msgbody)
-                                # handle the message
-                                responses = msghandler(message, socket)
-                                for r in responses
-                                    write(socket, bytes(r))
+                                try
+                                    waiting = nb_available(socket.buffer)
+                                    if waiting > max_buf
+                                        read(socket, Uint8, waiting)
+                                    end
+                                    # read the header
+                                    header::OfpHeader = seek_next_header(socket)
+                                    # read the body
+                                    msgbody = read(socket, Uint8, header.msglen - 8)
+                                    # TODO Probably we should create another task per read
+                                    # message here. Actually this task should run in another
+                                    # process, assemble the message, prepare the responses and
+                                    # return here. 
+                                    # assemble the corresponding message
+                                    message::Union(OfpMessage, Nothing) = assemblemessage(header, msgbody)
+                                    # handle the message
+                                    responses = msghandler(message, socket)
+                                    for r in responses
+                                        write(socket, bytes(r))
+                                    end
+                                catch
                                 end
+                                yield()
                             end
                         end
                     end

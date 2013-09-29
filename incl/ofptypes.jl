@@ -18,13 +18,6 @@ OfpHeader(msgtype, msglen=0x0000, msgidx::Uint32=0x00000000) = OfpHeader(0x01,
 @bytes OfpHeader
 @length OfpHeader
 @string OfpHeader
-function readofpheader(socket)
-    protoversion = read(socket, Uint8, 1)[1]
-    msgtype = read(socket, Uint8, 1)[1]
-    msglen = ntoh(read(socket, Uint16, 1)[1])
-    msgidx = ntoh(read(socket, Uint32, 1)[1])
-    OfpHeader(protoversion, msgtype, msglen, msgidx)
-end
 
 abstract OfpMessage <: OfpStruct
 

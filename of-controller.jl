@@ -225,7 +225,7 @@ function start_server(msghandler::Function, port = 6633)
             while true
                 socket = accept(server)
                 socket.line_buffered = false
-                info("Created a new socket.")
+                info("Created a new socket: $(hash(socket))")
                 @async begin
                     begin
                         let socket = socket
@@ -244,13 +244,24 @@ function start_server(msghandler::Function, port = 6633)
                                     # process, assemble the message, prepare the responses and
                                     # return here. 
                                     # assemble the corresponding message
-                                    message::Union(OfpMessage, Nothing) = assemblemessage(header, msgbody)
-                                    # handle the message
-                                    responses = msghandler(message, socket)
+                                    socket_id::Integer = hash(socket)
+                                    respref = @spawn begin
+                                        message::Union(OfpMessage, Nothing) = assemblemessage(header, msgbody)
+                                        if message != nothing
+                                            # handle the message
+                                            msghandler(message, socket_id)
+                                        else
+                                            Array(OfpMessage, 0)
+                                        end
+                                    end
+                                    responses::Vector{OfpMessage} = fetch(respref)
                                     for r in responses
                                         write(socket, bytes(r))
                                     end
-                                catch
+                                catch e
+                                    if isa(e, EOFError)
+                                        break
+                                    end
                                 end
                                 yield()
                             end

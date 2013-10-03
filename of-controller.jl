@@ -214,7 +214,8 @@ function seek_next_header(sock::TcpSocket)
     end
 end
 
-function start_server(msghandler::Function, port = 6633)
+function start_server(msghandler::Function, socketdata::Function,
+    update_socket_data::Function, port = 6633)
     info("Julia SDN server is up and running.")
 	server = listen(port)
     # XXX Probably it would be a good idead to set this dynamically based on the
@@ -245,16 +246,18 @@ function start_server(msghandler::Function, port = 6633)
                                     # return here. 
                                     # assemble the corresponding message
                                     socket_id::Integer = hash(socket)
+                                    socket_data = socketdata(socket_id)
                                     respref = @spawn begin
                                         message::Union(OfpMessage, Nothing) = assemblemessage(header, msgbody)
                                         if message != nothing
                                             # handle the message
-                                            msghandler(message, socket_id)
+                                            msghandler(message, socket_id, socket_data)
                                         else
-                                            Array(OfpMessage, 0)
+                                            (Array(OfpMessage, 0), socket_data)
                                         end
                                     end
-                                    responses::Vector{OfpMessage} = fetch(respref)
+                                    responses::Vector{OfpMessage}, socket_data = fetch(respref)
+                                    update_socket_data(socket_id, socket_data)
                                     for r in responses
                                         write(socket, bytes(r))
                                     end

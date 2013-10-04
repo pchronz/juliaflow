@@ -229,10 +229,6 @@ function start_server(msghandler::Function, port = 6633)
                                     header::OfpHeader = seek_next_header(socket)
                                     # read the body
                                     msgbody = read(socket, Uint8, header.msglen - 8)
-                                    # TODO Probably we should create another task per read
-                                    # message here. Actually this task should run in another
-                                    # process, assemble the message, prepare the responses and
-                                    # return here. 
                                     # assemble the corresponding message
                                     message::Union(OfpMessage, Nothing) = assemblemessage(header, msgbody)
                                     if message != nothing

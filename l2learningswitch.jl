@@ -3,15 +3,12 @@ module L2LearningSwitch
 using OpenFlow
 
 # Catch-all message handler.
-function processrequest!(message::OfpMessage, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(message::OfpMessage, socket_id::Integer)
     # warn("Got a message for which there is no processing rule: $(string(message))")
-    (OfpMessage[], socket_data)
 end
 
 # OfpQueueGetConfigRequest
-function processrequest!(msg::OfpQueueGetConfigRequest, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpQueueGetConfigRequest, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_QUEUE_GET_CONFIG_REQUEST
         # warn("Got a message of type $(msg). Since I am a controller, I really should not get this type of message.")
@@ -23,12 +20,11 @@ function processrequest!(msg::OfpQueueGetConfigRequest, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # info(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpQueueGetConfigReply
-function processrequest!(msg::OfpQueueGetConfigReply, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpQueueGetConfigReply, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_QUEUE_GET_CONFIG_REPLY
         # info("Got OFPT_QUEUE_GET_CONFIG_REPLY")
@@ -37,12 +33,11 @@ function processrequest!(msg::OfpQueueGetConfigReply, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # info(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpError
-function processrequest!(msg::OfpError, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpError, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_ERROR
         # warn("Got ERROR: $(string(msg))")
@@ -51,12 +46,11 @@ function processrequest!(msg::OfpError, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpSwitchFeatures
-function processrequest!(msg::OfpSwitchFeatures, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpSwitchFeatures, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_FEATURES_REQUEST
         # warn("Got a message of type $(msg). Since I am a controller, I really should not get this type of message.")
@@ -68,12 +62,11 @@ function processrequest!(msg::OfpSwitchFeatures, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpSwitchConfig
-function processrequest!(msg::OfpSwitchConfig, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpSwitchConfig, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_GET_CONFIG_REQUEST
         # warn("Got a message of type $(msg). Since I am a controller, I really should not get this type of message.")
@@ -88,18 +81,17 @@ function processrequest!(msg::OfpSwitchConfig, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # Known locations. (DL_addr=>Port)
 # OfpPacketIn
-function processrequest!(msg::OfpPacketIn, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpPacketIn, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_PACKET_IN
         # info("Got OFPT_PACKET_IN")
         # info(string(msg))
-        table = socket_data
+        table = tables[socket_id]
         dl_src = msg.data[7:12]
         dl_dst = msg.data[1:6]
         dl_type = btoui(msg.data[13], msg.data[14])
@@ -199,12 +191,11 @@ function processrequest!(msg::OfpPacketIn, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, table)
+    resp
 end
 
 # OfpPortStatus
-function processrequest!(msg::OfpPortStatus, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpPortStatus, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_PORT_STATUS
         # info("Got OFPT_PORT_STATUS")
@@ -213,12 +204,11 @@ function processrequest!(msg::OfpPortStatus, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpFlowMod
-function processrequest!(msg::OfpFlowMod, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpFlowMod, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_FLOW_MOD
         # warn("Got a message of type $(msg). Since I am a controller, I really should not get this type of message.")
@@ -227,12 +217,11 @@ function processrequest!(msg::OfpFlowMod, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpPortMod
-function processrequest!(msg::OfpPortMod, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpPortMod, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_PORT_MOD
         # warn("Got a message of type $(msg). Since I am a controller, I really should not get this type of message.")
@@ -241,12 +230,11 @@ function processrequest!(msg::OfpPortMod, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpStatsRequest
-function processrequest!(msg::OfpStatsRequest, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpStatsRequest, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_STATS_REQUEST
         # warn("Got a message of type $(msg). Since I am a controller, I really should not get this type of message.")
@@ -255,12 +243,11 @@ function processrequest!(msg::OfpStatsRequest, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpStatsReply
-function processrequest!(msg::OfpStatsReply, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpStatsReply, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_STATS_REPLY
         # info("Got OFPT_STATS_REPLY")
@@ -269,12 +256,11 @@ function processrequest!(msg::OfpStatsReply, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpPacketOut
-function processrequest!(msg::OfpPacketOut, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpPacketOut, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_PACKET_OUT
         # warn("Got a message of type $(msg). Since I am a controller, I really should not get this type of message.")
@@ -283,12 +269,11 @@ function processrequest!(msg::OfpPacketOut, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpFlowRemoved
-function processrequest!(msg::OfpFlowRemoved, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpFlowRemoved, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_FLOW_REMOVED
         # info("Got OFPT_FLOW_REMOVED")
@@ -297,16 +282,15 @@ function processrequest!(msg::OfpFlowRemoved, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 # OfpEmptyMessage handler.
-function processrequest!(msg::OfpEmptyMessage, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpEmptyMessage, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_HELLO
         # info("Got HELLO, replying HELLO")
         # info(string(msg))
-        socket_data = Dict{Uint8, Uint16}()
+        tables[socket_id] = Dict{Uint8, Uint16}()
         # XXX how does the msgidx work?
         push!(resp, OfpEmptyMessage(OfpHeader(OFPT_HELLO, 8)))
         push!(resp, OfpEmptyMessage(OfpHeader(OFPT_FEATURES_REQUEST, 8)))
@@ -325,12 +309,11 @@ function processrequest!(msg::OfpEmptyMessage, socket_id::Integer,
         # info("Got OFPT_BARRIER_REPLY")
         # info(string(msg))
     end
-    (resp, socket_data)
+    resp
 end
 
 # OfpVendorHeader
-function processrequest!(msg::OfpVendorHeader, socket_id::Integer,
-    socket_data::Dict{Uint8, Uint16})
+function processrequest!(msg::OfpVendorHeader, socket_id::Integer)
     resp::Vector{OfpMessage} = Array(OfpMessage, 0)
     if msg.header.msgtype == OFPT_VENDOR
         # info("Got OFPT_VENDOR")
@@ -339,23 +322,14 @@ function processrequest!(msg::OfpVendorHeader, socket_id::Integer,
         # warn("Got a message of type $(msg) containing a header with msgtype: $(msg.header.msgtype). Something is wrong!")
         # warn(string(msg))
     end
-    (resp, socket_data)
-end
-
-function socketdata(socket_id::Integer)
-    haskey(tables, socket_id) ? tables[socket_id] : Dict{Uint8, Uint16}()
-end
-
-function update_socket_data(socket_id::Integer, data)
-    tables[socket_id] = data
+    resp
 end
 
 # (socket_id => (mac => port))
 tables = Dict{Integer, Dict{Uint8, Uint16}}()
 const FLOW_HARD_TIMEOUT = 8
 const FLOW_IDLE_TIMEOUT = 8
-export FLOW_IDLE_TIMEOUT, FLOW_HARD_TIMEOUT, processrequest!, socketdata,
-    update_socket_data
+export FLOW_IDLE_TIMEOUT, FLOW_HARD_TIMEOUT, processrequest!
 
 end
 

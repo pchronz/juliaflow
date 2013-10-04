@@ -1,6 +1,6 @@
 abstract OfpStruct
 give_length{T<:OfpStruct}(arr::Vector{T}) = sum(map(give_length, arr))
-# XXX Is his slow? Maybe it is faster to first obtain the required size, then
+# XXX Is this slow? Maybe it is faster to first obtain the required size, then
 # allocate the array, then writing the value, iterative style. 
 bytes{T<:OfpStruct}(arr::Vector{T}) = [map(bytes, arr)...]
 import Base.string
@@ -193,8 +193,6 @@ end
 @bytesconstructor OfpError
 import Base.string
 function string(error::OfpError)
-    # XXX Solve this in a nicer way. Using reflection, or a dictionary or
-    # anything, but hard coding.
     typestr = if error.typ == OFPET_HELLO_FAILED
         "OFPET_HELLO_FAILED"
     elseif error.typ == OFPET_BAD_REQUEST
@@ -346,13 +344,9 @@ end
 @string OfpMatch
 @bytesconstructor OfpMatch [:pad2=>2, :dl_src=>OFP_MAX_ETH_ALEN, :dl_dst=>OFP_MAX_ETH_ALEN]
 
-# XXX Using the naming from the spec. It is not really a header but rather
-# something of a supertype for all actions. OfpAction would be a more suitable
-# name.
+# XXX Using the same naming scheme as in the spec. It is not really a header but rather
+# a supertype for all actions. OfpAction would be a more suitable name.
 abstract OfpActionHeader <: OfpStruct
-# TODO Probably it would be best to add methods to Base.length for all the
-    # special types. => rename all give_length methods to be methods of
-    # Base.length or whichever the standard length function is.
 function OfpActionHeaderFactory(body::Bytes)
     typ::Uint16 = btoui(body[1], body[2])
     if typ == OFPAT_OUTPUT
@@ -893,8 +887,7 @@ end
 @bytesconstructor OfpPortStats [:pad=>6]
 
 immutable OfpQueueStatsRequest <: OfpStatsRequestBody
-    # TODO OFPT_ALL and OFPQ_ALL are nowhere defined yet.
-    port_no::Uint16 # All ports if OFPT_ALL.
+    port_no::Uint16 # All ports if OFPP_ALL.
     pad::Bytes # Length:2; Align to 32-bits.
     queue_id::Uint32 # All queues if OFPQ_ALL.
     OfpQueueStatsRequest(port_no, queue_id) = new(port_no, zeros(Uint8, 2),
@@ -1029,8 +1022,9 @@ end
 # Send packet (controller -> datapath).
 immutable OfpPacketOut <: OfpMessage
     header::OfpHeader
-    buffer_id::Uint32 # ID assigned by datapath (-1 if none). XXX Short quiz
+    buffer_id::Uint32 # ID assigned by datapath (-1 if none). Short quiz
         # question: How do you assign a value of -1 to an unsigned integer type?
+        # --> 0xFFFFFFFF.
     in_port::Uint16 # Packet's input port (OFPP_NONE if none).
     actions_len::Uint16 # Size of action array in bytes.
     actions::Vector{OfpActionHeader} # Actions.

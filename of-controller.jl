@@ -1,15 +1,5 @@
 module OpenFlow
-# TODO Self-regulate and skip message when the buffer runs full. Use
-# subsampling. Try out multiple escalation levels:
-#   - write to file (probably senseless: timeouts and it takes too long to
-#   write),
-#   - read the buffer, but do not process it for a certain sub-sampling rate,
-#   - decrease the sub-sampling rate,
-#   - just clear the current buffer and continue with whatever comes in next
-#   when SHTF. For this to work you need to write a routine to jump in randomly
-#   in a stream and get the header.
 # TODO Write a macro that prints infos only in debug mode.
-# TODO Parallel version.
 # TODO Controller-initiated messages.
 # TODO Use the improved bytesconstructor macro on the types that require
 # factory methods.
@@ -214,8 +204,7 @@ function seek_next_header(sock::TcpSocket)
     end
 end
 
-function start_server(msghandler::Function, socketdata::Function,
-    update_socket_data::Function, port = 6633)
+function start_server(msghandler::Function, port = 6633)
     info("Julia SDN server is up and running.")
 	server = listen(port)
     # XXX Probably it would be a good idead to set this dynamically based on the
@@ -245,21 +234,13 @@ function start_server(msghandler::Function, socketdata::Function,
                                     # process, assemble the message, prepare the responses and
                                     # return here. 
                                     # assemble the corresponding message
-                                    socket_id::Integer = hash(socket)
-                                    socket_data = socketdata(socket_id)
-                                    respref = @spawn begin
-                                        message::Union(OfpMessage, Nothing) = assemblemessage(header, msgbody)
-                                        if message != nothing
-                                            # handle the message
-                                            msghandler(message, socket_id, socket_data)
-                                        else
-                                            (Array(OfpMessage, 0), socket_data)
+                                    message::Union(OfpMessage, Nothing) = assemblemessage(header, msgbody)
+                                    if message != nothing
+                                        # handle the message
+                                        responses::Vector{OfpMessage} = msghandler(message, hash(socket))
+                                        for r in responses
+                                            write(socket, bytes(r))
                                         end
-                                    end
-                                    responses::Vector{OfpMessage}, socket_data = fetch(respref)
-                                    update_socket_data(socket_id, socket_data)
-                                    for r in responses
-                                        write(socket, bytes(r))
                                     end
                                 catch e
                                     if isa(e, EOFError)

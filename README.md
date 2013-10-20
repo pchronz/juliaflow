@@ -47,7 +47,7 @@ Alternatively you can start up Julia's REPL ("julia") and evaluate the startup s
     julia
     include("start_l2learning.jl")
 
-These commands will start the controller, which will listen on port **6633** on **localhost**. 
+These commands will start the controller, which will listen on port *6633* on *localhost*. 
 
 Since an OpenFlow controller without a switch does not make too much sense, feel free to try it out with [Mininet](http://mininet.org), [Open vSwitch](http://openvswitch.org) or benchmark it using cbench.
 
